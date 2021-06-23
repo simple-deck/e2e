@@ -1,8 +1,8 @@
-import { Browser, BrowserServer, chromium, Page } from 'playwright';
+import { BrowserServer, chromium, Page } from 'playwright';
 import { isMainThread, parentPort, Worker, workerData } from 'worker_threads';
 
 /* tracks test suite configs */
-const configStorage = new Map<string, SuiteStorage<BaseSuite<unknown>>>();
+const configStorage = new Map<string, SuiteStorage<BaseSuite<any>, any[]>>();
 /* tracks what test suites run based on this one */
 const dependencyStorage = new Map<string, string[]>();
 /* tracks what test suites have run */
@@ -12,24 +12,25 @@ const suiteResultStorage = new Map<string, unknown>();
 
 
 const rootSuites: string[] = [];
-
-interface SuiteConfig {
-  dependsOn: { new(): BaseSuite<unknown> }[];
+type Type<T> = { new (...args: any[]): T }
+interface SuiteConfig<T extends (readonly Type<BaseSuite<any>>[])> {
+  dependsOn: T;
 }
+type ExtractResult<T> = T extends { new(): BaseSuite<infer R> } ? R : T;
 
-type ExtractResult<T> = T extends { new(): BaseSuite<infer R> } ? R : never;
 
 interface DataForSuiteWorker {
   suiteName: string;
   wsEndpoint: string;
   sharedData: SharedArrayBuffer;
+  resultStorage: Map<string, unknown>;
 }
 
 const dataForSuiteWorker: DataForSuiteWorker = workerData;
 
-interface SuiteStorage<T extends BaseSuite<unknown>> {
-  config: SuiteConfig;
-  suite: { new(...args: unknown[]): T; };
+interface SuiteStorage<T extends BaseSuite<unknown>, A extends unknown[]> {
+  config: SuiteConfig<any>;
+  suite: { new(...args: A): T; };
 }
 
 interface SuccessRunResult<T> {
@@ -49,6 +50,16 @@ export abstract class BaseSuite<T> {
   abstract main (): Promise<T>;
 }
 
+
+
+class Login extends BaseSuite<string> { async main() { return ''; } }
+class Signup extends BaseSuite<number> { async main() { return 0; } }
+
+type SuiteArgs<T> = {
+  [P in keyof T]: T[P] extends Type<BaseSuite<infer R>> ? R : never;
+};
+
+
 function detectInfiniteLoops<T> (
   core: Function
 ): Function[][] {
@@ -60,7 +71,7 @@ function detectInfiniteLoops<T> (
   ) => {
     const dependents = configStorage.get(currentProp.name)?.config.dependsOn ?? [];
 
-    dependents.forEach(dependent => {
+    dependents.forEach((dependent: Type<BaseSuite<any>>) => {
       const scopedCurrentTree = [
         ...currentTree,
         dependent
@@ -84,15 +95,16 @@ function detectInfiniteLoops<T> (
   return infiniteLoops;
 }
 
-export function Suite (config: SuiteConfig) {
-  return <T extends BaseSuite<unknown>> (target: { new(): T; }) => {
+export function Suite <T extends (readonly Type<BaseSuite<any>>[])>(config: SuiteConfig<T>) {
+  return <T2 extends BaseSuite<any>>(target: { new(...args: SuiteArgs<T>): T2; }) => {
     if (configStorage.get(target.name)) {
       throw new ReferenceError(`${target.name} is already registered, use a different name`);
     }
-    configStorage.set(target.name, {
+    const configStore: SuiteStorage<T2, unknown[]> = {
       config,
-      suite: target
-    });
+      suite: target as any
+    };
+    configStorage.set(target.name, configStore);
 
     if (config.dependsOn.length === 0) {
       rootSuites.push(target.name);
@@ -141,7 +153,7 @@ export class SuiteRunner {
     await Promise.all(triggeredSuites.map(async triggeredSuite => {
       const dependentSuites = this.getSuiteConfig(triggeredSuite).config.dependsOn;
 
-      const shouldRunSuite = dependentSuites.every(suite => {
+      const shouldRunSuite = dependentSuites.every((suite: Type<BaseSuite<any>>) => {
         return completionStorage.get(suite.name) ?? false;
       });
 
@@ -164,7 +176,8 @@ export class SuiteRunner {
       const worker = this.createWorker({
         wsEndpoint,
         sharedData: this.sharedData,
-        suiteName
+        suiteName,
+        resultStorage: suiteResultStorage
       });
   
       worker.on('message', async (result: RunResult<unknown>) => {
@@ -176,7 +189,7 @@ export class SuiteRunner {
       worker.on('error', (err) => {
         console.log(`worker ${suiteName} failed with`, err);
         reject(err);
-      })
+      });
 
     });
   }
@@ -184,9 +197,10 @@ export class SuiteRunner {
   async runSuiteInWorker (): Promise<unknown> {
     const {
       suiteName,
+      resultStorage,
       wsEndpoint
     } = dataForSuiteWorker;
-    
+
     console.log(`worker for ${suiteName} started`);
 
     const browser = await chromium.connect({
@@ -197,7 +211,9 @@ export class SuiteRunner {
 
     const config = this.getSuiteConfig(suiteName);
 
-    const suite = new config.suite();
+    const suite = new config.suite(
+      ...config.config.dependsOn.map((dependent: Type<BaseSuite<any>>) => resultStorage.get(dependent.name))
+    );
     suite['page'] = page;
 
     const result = await suite.main();

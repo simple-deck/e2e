@@ -1,34 +1,63 @@
 import { BaseSuite, run, Suite } from './suite';
 
+type Result = {
+  token: string;
+  refreshTokenExpiration: string;
+  expiration: string;
+  refreshToken: string;
+  clientIdentifier: string;
+};
+
 @Suite({
   dependsOn: []
 })
-export class SignUp extends BaseSuite<string> {
+export class SetUp extends BaseSuite<Record<string, string>> {
   async main () {
-    await this.page.goto('https://google.com');
+    await this.page.goto('https://yourcausegrantsqa.com/platform/auth/signin');
 
-    console.log(await this.page.evaluate(() => {
+    await this.page.waitForURL('https://yourcausegrantsqa.com/platform/home')
+
+    const result: Record<string, string> = await this.page.evaluate(() => {
+      const token = JSON.parse(localStorage.getItem('_yc_adminUser') ?? '{}');
+      const identifier = localStorage.getItem('_yc_adminClientIdentifier');
       localStorage.setItem('test', 'what in the sam');
 
-      return localStorage.getItem('test');
-    }));
+      return localStorage;
+    });
 
-    return 'I went to google';
+    return result;
   }
 }
 
 @Suite({
-  dependsOn: [SignUp]
+  dependsOn: [SetUp] as const
 })
 export class Login extends BaseSuite<string> {
+  constructor (
+    private signUpResult: Record<string, string>
+  ) { super(); }
+
   async main () {
-    await this.page.goto('https://google.com');
+    this.page.addInitScript((lsData: any) => {
+      Object.assign(localStorage, lsData)
+    }, this.signUpResult);
 
-    const whatItIs = await this.page.evaluate(() => localStorage.getItem('test'));
+    await this.page.goto('https://yourcausegrantsqa.com/platform/home');
+    // await this.page.waitForTimeout(30000);
+    await this.page.click('a[aria-label="Grant Managers"]');
+    return '';
+  }
 
-    console.log(whatItIs);
+  private async getMFAFromMailinator () {
+    await this.page.goto('https://www.mailinator.com/v4/public/inboxes.jsp?to=lukie');
 
-    return 'I went back to google';
+    await this.page.waitForSelector('table.table-striped.jambo_table > tbody > tr > td:nth-child(3)');
+
+    await this.page.click('table.table-striped.jambo_table > tbody > tr > td:nth-child(3)');
+    const el = await this.page.waitForSelector('iframe#html_msg_body');
+    const subFrame = await el.contentFrame();
+    const content = await subFrame?.$eval('body > center > table:nth-child(3) > tbody > tr:nth-child(4) > td > h1', el => el.innerHTML);
+    return content;
   }
 }
 
