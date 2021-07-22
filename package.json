@@ -2,7 +2,7 @@
   "name": "@simple-deck/e2e-runner",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "lib/index.js",
   "scripts": {
     "build": "tsc -p ./tsconfig.build.json",
     "prebuild": "rm -rf dist",
