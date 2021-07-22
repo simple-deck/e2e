@@ -68,7 +68,7 @@ export class SuiteRunner {
     } catch (e) {
       console.error(e);
 
-      return;
+      process.exit(1);
     }
   }
 
