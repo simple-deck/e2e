@@ -1,6 +1,6 @@
 import { sync } from 'glob';
 import { resolve } from 'path';
-import { chromium, firefox, LaunchOptions, webkit } from 'playwright';
+import { BrowserContext, chromium, firefox, LaunchOptions, webkit } from 'playwright';
 import { isMainThread, parentPort, Worker, workerData } from 'worker_threads';
 import { BaseSuite } from './base-suite';
 import { Browsers, DataForSuiteWorker, RunResult, SuiteArgs, SuiteConfig, SuiteStorage, Type } from './typings';
@@ -48,22 +48,28 @@ export class SuiteRunner {
     suiteName: string,
     browser: Browsers
   ): Promise<void> {
-    const result = await this.awaitWorker(suiteName, browser);
-    SuiteRunner.suiteResultStorage.set(suiteName, result);
-    SuiteRunner.completionStorage.set(suiteName, true);
-    const triggeredSuites = SuiteRunner.dependencyStorage.get(suiteName) ?? [];
+    try {
+      const result = await this.awaitWorker(suiteName, browser);
+      SuiteRunner.suiteResultStorage.set(suiteName, result);
+      SuiteRunner.completionStorage.set(suiteName, true);
+      const triggeredSuites = SuiteRunner.dependencyStorage.get(suiteName) ?? [];
+  
+      await Promise.all(triggeredSuites.map(async triggeredSuite => {
+        const dependentSuites = this.getSuiteConfig(triggeredSuite).config.dependsOn;
+  
+        const shouldRunSuite = dependentSuites.every((suite: Type<BaseSuite<unknown>>) => {
+          return SuiteRunner.completionStorage.get(suite.name) ?? false;
+        });
+  
+        if (shouldRunSuite) {
+          return this.runSuiteInMain(triggeredSuite, browser);
+        }
+      }));
+    } catch (e) {
+      console.error(e);
 
-    await Promise.all(triggeredSuites.map(async triggeredSuite => {
-      const dependentSuites = this.getSuiteConfig(triggeredSuite).config.dependsOn;
-
-      const shouldRunSuite = dependentSuites.every((suite: Type<BaseSuite<unknown>>) => {
-        return SuiteRunner.completionStorage.get(suite.name) ?? false;
-      });
-
-      if (shouldRunSuite) {
-        return this.runSuiteInMain(triggeredSuite, browser);
-      }
-    }));
+      return;
+    }
   }
 
   private createWorker (data: DataForSuiteWorker) {
@@ -129,27 +135,29 @@ export class SuiteRunner {
     const browserType = this.determineBrowserFromType(browser);
 
     this.debugAsWorker(`started`);
-
-    const browserInstance = await browserType.launchPersistentContext(resolve(__dirname, '..', '..', 'data', browser), launchOptions);
-
-    const page = await browserInstance.newPage();
-
-    const config = this.getSuiteConfig(suiteName);
-
-    const suite = new config.suite(
-      ...config.config.dependsOn.map((dependent: Type<BaseSuite<unknown>>) => resultStorage.get(dependent.name))
-    );
-
-    suite['browser'] = browserInstance;
-    suite['page'] = page;
-    suite['browserType'] = browser;
+    let browserInstance: BrowserContext|null = null;
     try {
+      browserInstance = await browserType.launchPersistentContext(resolve(__dirname, '..', '..', 'data', browser), launchOptions);
+
+      const page = await browserInstance.newPage();
+
+      const config = this.getSuiteConfig(suiteName);
+
+      const suite = new config.suite(
+        ...config.config.dependsOn.map((dependent: Type<BaseSuite<unknown>>) => resultStorage.get(dependent.name))
+      );
+
+      suite['browser'] = browserInstance;
+      suite['page'] = page;
+      suite['browserType'] = browser;
       const result = await suite.main();
       this.emitDataAsWorker({
         success: true,
         result
       });
     } catch (error) {
+      console.error(error);
+
       this.emitDataAsWorker({
         success: false,
         error
@@ -157,7 +165,7 @@ export class SuiteRunner {
     }
 
 
-    await browserInstance.close();
+    await browserInstance?.close();
 
     return null;
   }
