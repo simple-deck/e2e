@@ -142,6 +142,7 @@ export class SuiteRunner {
 
     suite['browser'] = browserInstance;
     suite['page'] = page;
+    suite['browserType'] = browser;
     try {
       const result = await suite.main();
       this.emitDataAsWorker({

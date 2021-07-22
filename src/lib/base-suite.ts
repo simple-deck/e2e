@@ -1,8 +1,13 @@
-import { BrowserContext, Page } from 'playwright';
-
+import { resolve } from 'path/posix';
+import { BrowserContext, BrowserType, Page, PageScreenshotOptions } from 'playwright';
+import * as mkdirp from 'mkdirp';
+import { Browsers } from './typings';
 export abstract class BaseSuite<T> implements Partial<Page> {
+  private screenshotDirCreated = false;
+
   protected page!: Page;
   protected browser!: BrowserContext;
+  protected browserType!: Browsers;
   abstract main (): Promise<T>;
   abstract hostname: string;
 
@@ -38,5 +43,21 @@ export abstract class BaseSuite<T> implements Partial<Page> {
 
   async waitForToastr (type: 'success'|'warning'|'error'): Promise<void> {
     await this.page.waitForSelector('#toast-container > .toast-' + type);
+  }
+
+  /**
+   * Take a screenshot and store in a relative, browser specific folder
+   * 
+   * @param name Name of the file to store the screenshot
+   */
+  async screenshotPage (name: string): Promise<void> {
+    const folder = resolve(process.cwd(), 'screenshots', this.browserType);
+    if (!this.screenshotDirCreated) {
+      mkdirp.sync(folder);
+    }
+
+    await this.page.screenshot({
+      path: resolve(folder, name)
+    });
   }
 }
