@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "src/**/*.spec.ts"
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "baseUrl": "./src",
+    "paths": {
+      "@simple-deck/e2e-runner": ["./lib/"]
+    }
+  }
+}

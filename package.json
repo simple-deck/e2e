@@ -5,14 +5,29 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "run": "tsc && node ./dist/index"
+    "prebuild": "rm -rf dist/*",
+    "build": "tsc -p ./tsconfig.build.json",
+    "prestart:e2e": "npm run build;",
+    "start:e2e": "node ./dist/index",
+    "prestart:e2e-clean": "rm -rf data/*/*",
+    "start:e2e-clean": "npm run start:e2e",
+    "prestart:mailinator": "npm run build",
+    "start:mailinator": "node ./dist/mailinator"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/axios": "^0.14.0",
+    "@types/chai": "^4.2.19",
+    "@types/glob": "^7.1.3",
     "@types/node": "^15.12.4",
+    "@types/ws": "^7.4.5",
+    "axios": "^0.21.1",
+    "chai": "^4.3.4",
+    "glob": "^7.1.7",
     "playwright": "^1.12.2",
     "ts-node": "^10.0.0",
-    "typescript": "^4.3.4"
+    "typescript": "^4.3.4",
+    "ws": "^7.5.0"
   }
 }
