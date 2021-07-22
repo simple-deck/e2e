@@ -1,6 +1,6 @@
-import { resolve } from 'path/posix';
-import { BrowserContext, BrowserType, Page, PageScreenshotOptions } from 'playwright';
 import * as mkdirp from 'mkdirp';
+import { resolve } from 'path';
+import { BrowserContext, Page } from 'playwright';
 import { Browsers } from './typings';
 export abstract class BaseSuite<T> implements Partial<Page> {
   private screenshotDirCreated = false;
