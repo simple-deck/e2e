@@ -7,7 +7,7 @@ import { Browsers, DataForSuiteWorker, RunResult, SuiteArgs, SuiteConfig, SuiteS
 const dataForSuiteWorker: DataForSuiteWorker = workerData;
 
 /* tracks test suite configs */
-const configStorage = new Map<string, SuiteStorage<BaseSuite<any>, any[]>>();
+const configStorage = new Map<string, SuiteStorage<BaseSuite<unknown>, unknown[]>>();
 /* tracks what test suites run based on this one */
 const dependencyStorage = new Map<string, string[]>();
 /* Suites with no depends on */
@@ -36,12 +36,12 @@ export class SuiteRunner {
     return config;
   }
 
-  private debugAsWorker (...messages: any[]) {
+  private debugAsWorker (...messages: string[]) {
     const {
       suiteName,
       browser
     } = dataForSuiteWorker;
-    console.log(`worker for ${suiteName} on ${browser}: `, ...messages)
+    console.log(`worker for ${suiteName} on ${browser}: `, ...messages);
   }
 
   private async runSuiteInMain (
@@ -56,7 +56,7 @@ export class SuiteRunner {
     await Promise.all(triggeredSuites.map(async triggeredSuite => {
       const dependentSuites = this.getSuiteConfig(triggeredSuite).config.dependsOn;
 
-      const shouldRunSuite = dependentSuites.every((suite: Type<BaseSuite<any>>) => {
+      const shouldRunSuite = dependentSuites.every((suite: Type<BaseSuite<unknown>>) => {
         return SuiteRunner.completionStorage.get(suite.name) ?? false;
       });
 
@@ -75,7 +75,8 @@ export class SuiteRunner {
   private awaitWorker (suiteName: string, browser: Browsers) {
     const workerName = `worker for ${suiteName} on ${browser}`;
     console.log(`spawning:`, workerName);
-    return new Promise<unknown>((resolve, reject) => {
+
+    return new Promise<unknown>((res, rej) => {
       const worker = this.createWorker({
         sharedData: this.sharedData,
         suiteName,
@@ -86,17 +87,17 @@ export class SuiteRunner {
       worker.on('message', async (result: RunResult<unknown>) => {
         if (result.success) {
           console.log(workerName, `succeeded with`, result);
-          resolve(result);
+          res(result);
         } else if (result.success === false) {
           console.log(workerName, 'failed with', result.error);
-          reject(result.error);
+          rej(result.error);
         }
         SuiteRunner.suiteResultStorage.set(suiteName, result);
       });
       
       worker.on('error', (err) => {
         console.log(workerName, 'failed with', err);
-        reject(err);
+        rej(err);
       });
     });
   }
@@ -118,10 +119,6 @@ export class SuiteRunner {
     parentPort?.postMessage(result);
   }
 
-  private determineSteps (config: SuiteStorage<BaseSuite<any>, any[]>) {
-
-  }
-
   private async runSuiteInWorker (launchOptions: LaunchOptions): Promise<unknown> {
     const {
       suiteName,
@@ -140,7 +137,7 @@ export class SuiteRunner {
     const config = this.getSuiteConfig(suiteName);
 
     const suite = new config.suite(
-      ...config.config.dependsOn.map((dependent: Type<BaseSuite<any>>) => resultStorage.get(dependent.name))
+      ...config.config.dependsOn.map((dependent: Type<BaseSuite<unknown>>) => resultStorage.get(dependent.name))
     );
 
     suite['browser'] = browserInstance;
@@ -155,7 +152,7 @@ export class SuiteRunner {
       this.emitDataAsWorker({
         success: false,
         error
-      })
+      });
     }
 
 
@@ -170,7 +167,7 @@ export class SuiteRunner {
       return [
         ...acc,
         ...SuiteRunner.rootSuites.map(async (suite) => this.runSuiteInMain(suite, browser))
-      ]
+      ];
     }, []);
     await Promise.all(allPromises);
     console.log('All tests finished in: ', Date.now() - start);
@@ -180,7 +177,7 @@ export class SuiteRunner {
     browsers: Browsers[],
     importFilePattern?: string,
     launchOptions?: LaunchOptions
-  }) {
+  }): Promise<unknown> {
     const {
       importFilePattern,
       browsers = [],
@@ -193,9 +190,9 @@ export class SuiteRunner {
     }
 
     if (isMainThread) {
-      new SuiteRunner().runInMain(browsers);
+      return new SuiteRunner().runInMain(browsers);
     } else {
-      new SuiteRunner().runSuiteInWorker(launchOptions);
+      return new SuiteRunner().runSuiteInWorker(launchOptions);
     }
   }
 
@@ -220,8 +217,9 @@ export class SuiteRunner {
     importPaths.forEach(path => require(path));
   }
 
-  static Suite<T extends (readonly Type<BaseSuite<any>>[])> (config: SuiteConfig<T>) {
-    return <T2 extends BaseSuite<any>>(target: { new(...args: SuiteArgs<T>): T2; }) => {
+  static Suite<R, T extends (readonly Type<BaseSuite<R>>[])> (config: SuiteConfig<T>) {
+    // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
+    return <T2 extends BaseSuite<unknown>>(target: Type<BaseSuite<unknown>>&{ new(...args: SuiteArgs<T>): T2; }) => {
       if (config.disabled) {
         return;
       }
@@ -234,7 +232,7 @@ export class SuiteRunner {
         SuiteRunner.rootSuites.push(target.name);
       }
   
-      const loops = this.detectInfiniteLoops(target);
+      const loops = this.detectInfiniteLoops(target as Type<BaseSuite<unknown>>);
   
       if (loops.length > 0) {
         console.error(loops.map(loop => loop.join(' => ')));
@@ -251,34 +249,35 @@ export class SuiteRunner {
     };
   }
 
-  private static setConfig<T extends (readonly Type<BaseSuite<any>>[])> (
+  private static setConfig<T extends (readonly Type<BaseSuite<unknown>>[])> (
     config: SuiteConfig<T>,
-    target: new (...args: SuiteArgs<T>) => BaseSuite<any>
+    target: Type<BaseSuite<unknown>>&(new (...args: SuiteArgs<T>) => BaseSuite<unknown>)
   ) {
-    const configStore: SuiteStorage<BaseSuite<any>, unknown[]> = SuiteRunner.getConfigStore<T>(target);
+    const configStore: SuiteStorage<BaseSuite<unknown>, unknown[]> = SuiteRunner.getConfigStore<T>(target);
 
     configStore.config = config;
 
     SuiteRunner.configStorage.set(target.name, configStore);
   }
 
-  private static getConfigStore<T extends (readonly Type<BaseSuite<any>>[])> (target: new (...args: SuiteArgs<T>) => BaseSuite<any>): SuiteStorage<BaseSuite<any>, unknown[]> {
+  private static getConfigStore<T extends (readonly Type<BaseSuite<unknown>>[])> (target: Type<BaseSuite<unknown>>&(new (...args: SuiteArgs<T>) => BaseSuite<unknown>)): SuiteStorage<BaseSuite<unknown>, unknown[]> {
     return SuiteRunner.configStorage.get(target.name) ?? {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       config: null as any,
-      suite: target as any
+      suite: target
     };
   }
 
-  private static detectInfiniteLoops (core: Function): Function[][] {
-    const infiniteLoops: Function[][] = [];
+  private static detectInfiniteLoops (core: Type<BaseSuite<unknown>>): Type<BaseSuite<unknown>>[][] {
+    const infiniteLoops: Type<BaseSuite<unknown>>[][] = [];
   
     const infiniteLoopLoop = (
-      currentProp: Function,
-      currentTree: Function[]
+      currentProp: Type<BaseSuite<unknown>>,
+      currentTree: Type<BaseSuite<unknown>>[]
     ) => {
       const dependents = SuiteRunner.configStorage.get(currentProp.name)?.config.dependsOn ?? [];
   
-      dependents.forEach((dependent: Type<BaseSuite<any>>) => {
+      dependents.forEach((dependent: Type<BaseSuite<unknown>>) => {
         const scopedCurrentTree = [
           ...currentTree,
           dependent

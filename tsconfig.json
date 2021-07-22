@@ -3,5 +3,7 @@
     "path": "./tsconfig.spec.json"
   }, {
     "path": "./tsconfig.build.json"
+  }, {
+    "path": "./tsconfig.sample.json"
   }]
 }

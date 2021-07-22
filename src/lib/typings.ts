@@ -6,14 +6,17 @@ export enum Browsers {
   firefox = 'firefox' // Covers Firefox
 }
 
-export type Type<T> = { new (...args: any[]): T }
-export interface SuiteConfig<T extends (readonly Type<BaseSuite<any>>[])> {
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface Type<T> { new (...args: any[]): T }
+
+export interface SuiteConfig<T extends (readonly Type<BaseSuite<unknown>>[])> {
   dependsOn: T;
   disabled?: boolean;
 }
 
 export interface SuiteStorage<T extends BaseSuite<unknown>, A extends unknown[]> {
-  config: SuiteConfig<any>;
+  config: SuiteConfig<readonly (Type<BaseSuite<unknown>>)[]>;
   suite: { new(...args: A): T; };
 }
 
