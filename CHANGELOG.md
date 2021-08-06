@@ -1,3 +1,11 @@
+## [1.1.1](https://github.com/simple-deck/e2e/compare/v1.1.0...v1.1.1) (2021-07-22)
+
+
+### Bug Fixes
+
+* add better error handling ([a551ad6](https://github.com/simple-deck/e2e/commit/a551ad672a0553c19c204b3aed2e45205e69b70a))
+* exit process on error ([c9fda2f](https://github.com/simple-deck/e2e/commit/c9fda2ff7cf306bd81a15c7f400ace5885b19664))
+
 # [1.1.0](https://github.com/simple-deck/e2e/compare/v1.0.1...v1.1.0) (2021-07-22)
 
 
