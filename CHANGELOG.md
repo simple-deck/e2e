@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/simple-deck/e2e/compare/v1.1.1...v1.1.2) (2021-08-06)
+
+
+### Bug Fixes
+
+* move playwright to peer dependencies ([4282253](https://github.com/simple-deck/e2e/commit/428225311d40bed2d0ce65c7883a23825e7c5cd1))
+
 ## [1.1.1](https://github.com/simple-deck/e2e/compare/v1.1.0...v1.1.1) (2021-07-22)
 
 
