@@ -1,15 +1,17 @@
-import { Browsers, SuiteRunner } from '@simple-deck/e2e-runner';
+import { Browsers, SuiteRunner } from '../lib/';
+import { Google } from './suites/google-core';
+export { Google };
 
 SuiteRunner.run({
   browsers: [
-    // Browsers.chromium,
+    Browsers.chromium,
     // Browsers.firefox,
     Browsers.webkit
   ],
-  importFilePattern: './suites/**/*.js',
   launchOptions: {
-    headless: false,
-    timeout: 90000,
-    slowMo: 100
-  }
+    headless: true,
+    timeout: 90000
+  },
+  importFilePattern: './suites/**/*.js',
+  screenshotBetweenStages: true
 });
