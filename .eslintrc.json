@@ -53,6 +53,7 @@
     "space-in-parens": [
       "error",
       "never"
-    ]
+    ],
+    "no-unused-vars": ["never"]
   }
 }

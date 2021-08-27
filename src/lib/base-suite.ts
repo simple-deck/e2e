@@ -2,13 +2,18 @@ import * as mkdirp from 'mkdirp';
 import { resolve } from 'path';
 import { BrowserContext, Page } from 'playwright';
 import { Browsers } from './typings';
-export abstract class BaseSuite<T> implements Partial<Page> {
+
+/**
+ * The core suite is a runner that runs each suite with `Step`. Requires at least one `Step` to be present
+ * 
+ * See {@link SuiteRunner.Step}
+ */
+export abstract class CoreSuite implements Partial<Page> {
   private screenshotDirCreated = false;
 
   protected page!: Page;
   protected browser!: BrowserContext;
   protected browserType!: Browsers;
-  abstract main (): Promise<T>;
   abstract hostname: string;
 
   goto (path: string): ReturnType<Page['goto']> {
@@ -17,7 +22,6 @@ export abstract class BaseSuite<T> implements Partial<Page> {
 
   waitForURL (path: string): ReturnType<Page['waitForURL']> {
     const fullURL = this.getCleanURL(path);
-    console.log(fullURL);
 
     return this.page.waitForURL(fullURL);
   }
@@ -61,3 +65,21 @@ export abstract class BaseSuite<T> implements Partial<Page> {
     });
   }
 }
+
+/**
+ * An extension of the {@link CoreSuite}. No {@link SuiteRunner.Step} required for this, the {@link BaseSuite#main} method will automatically be called.
+ */
+export abstract class BaseSuite<T> extends CoreSuite {
+  /**
+   * The core method of the suite, the return value is used to pass data to another suite
+   */
+  abstract main (): T|Promise<T>;
+}
+
+class TestBaseSuite extends BaseSuite<void> {
+  async main () {
+    return;
+  }
+  hostname = '';
+}
+export const testBaseSuite = new TestBaseSuite();
