@@ -54,6 +54,6 @@
       "error",
       "never"
     ],
-    "no-unused-vars": ["never"]
+    "no-unused-vars": "off"
   }
 }
