@@ -19,7 +19,7 @@ export class Google extends CoreSuite {
 
     this.imageButton = await this.page.$('a:has-text("Image")');
 
-    expect(this.imageButton).to.be.undefined;
+    expect(this.imageButton).not.to.be.undefined;
   }
 
   @Step(2)
