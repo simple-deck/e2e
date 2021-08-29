@@ -24,11 +24,15 @@ export class SuiteRunner {
   private static completionStorage = completionStorage;
   private static suiteResultStorage = suiteResultStorage;
 
-  constructor (
-    private config: RunOptions
-  ) { }
 
   private sharedData = new SharedArrayBuffer(256 * 1024);
+
+  /**
+   * Looks for a configuration for a suite and throws an error if none exist
+   *
+   * @param suite Name of the suite to look up
+   * @returns The configuration of the suite
+   */
   private getSuiteConfig (suite: string) {
     const config = SuiteRunner.configStorage.get(suite);
 
@@ -39,6 +43,12 @@ export class SuiteRunner {
     return config;
   }
 
+  /**
+   * Looks up the suite, spawns a worker, and stores the result for future suties
+   *
+   * @param suiteName Name of the suite to run
+   * @param browser Browser to run the suite in
+   */
   private async runSuiteInMain (
     suiteName: string,
     browser: Browsers
@@ -57,7 +67,7 @@ export class SuiteRunner {
         });
 
         return shouldRunSuite;
-      })
+      });
 
       const [isolatedSuites, concurrentSuites] = this.determineIsolatedSuites(readySuites);
       await this.executeSuitesInOrder(isolatedSuites, browser, concurrentSuites);
@@ -181,7 +191,7 @@ export class SuiteRunner {
       runBrowsersInParallel,
       screenshotBetweenStages
     };
-    const suiteRunner = new SuiteRunner(conf);
+    const suiteRunner = new SuiteRunner();
 
     if (importFilePattern) {
       this.importSuites(importFilePattern);
