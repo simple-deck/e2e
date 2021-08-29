@@ -4,13 +4,13 @@ import { BrowserContext, chromium, firefox, Page, webkit } from 'playwright';
 import { parentPort, workerData } from 'worker_threads';
 import { BaseSuite, CoreSuite } from '../lib/base-suite';
 import { testBaseSuite } from './base-suite';
-import { Browsers, DataForSuiteWorker, RunOptions, RunResult, SuiteStorage, Type } from './typings';
+import { Browsers, DataForSuiteWorker, RunOptions, RunResult, SuccessRunResult, SuiteStorage, Type } from './typings';
 const dataForSuiteWorker: DataForSuiteWorker = workerData;
 
 export class SuiteRunnerWorker {
 
   constructor (
-    private suiteConfig: SuiteStorage<any, any>,
+    private suiteConfig: SuiteStorage<CoreSuite, unknown[]>,
     private globalConfig: RunOptions
   ) { }
 
@@ -89,7 +89,7 @@ export class SuiteRunnerWorker {
     return null;
   }
   
-  private async runCoreSuite (suite: any, doScreenshot: boolean | undefined) {
+  private async runCoreSuite (suite: CoreSuite, doScreenshot: boolean | undefined) {
     const steps = this.suiteConfig.steps;
     const allSteps = Object.keys(steps)
       .map(step => +step)
@@ -125,7 +125,7 @@ export class SuiteRunnerWorker {
     });
   }
 
-  private async runBaseSuite (suite: BaseSuite<any>, doScreenshot: boolean | undefined) {
+  private async runBaseSuite (suite: BaseSuite<unknown>, doScreenshot: boolean | undefined) {
     const testName = `${suite.constructor.name}`;
     const start = Date.now();
     const result = await suite.main();
@@ -140,7 +140,7 @@ export class SuiteRunnerWorker {
     });
   }
 
-  private setupSuite (argsForSuite: any[], browserInstance: BrowserContext, page: Page, browser: Browsers) {
+  private setupSuite (argsForSuite: unknown[], browserInstance: BrowserContext, page: Page, browser: Browsers) {
     const suite = new this.suiteConfig.suite(
       ...argsForSuite
     );
@@ -152,7 +152,7 @@ export class SuiteRunnerWorker {
     return suite;
   }
 
-  private getArgsForSuite (resultStorage: Map<string, import("/Users/john.saady/Projects/Personal/simple-deck/e2e/src/lib/typings").SuccessRunResult<string>>) {
+  private getArgsForSuite (resultStorage: Map<string, SuccessRunResult<string>>) {
     return this.suiteConfig.config.dependsOn.map((dependent: Type<CoreSuite>) => {
       const resultFromStorage = resultStorage.get(dependent.name);
 
@@ -172,6 +172,7 @@ export class SuiteRunnerWorker {
   ): string {
     if (error instanceof AssertionError) {
       console.error(error.stack + '\n\n');
+
       return '';
     } else {
       return error.stack ?? error.toString();
