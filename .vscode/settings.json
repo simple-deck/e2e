@@ -2,6 +2,7 @@
   "conventionalCommits.scopes": [
     "base suite",
     "core suite",
-    "samples"
+    "samples",
+    "suite-runner-worker"
   ]
 }
