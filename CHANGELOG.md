@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/simple-deck/e2e/compare/v1.2.0...v1.3.0) (2021-09-08)
+
+
+### Features
+
+* add new test results processor ([f273181](https://github.com/simple-deck/e2e/commit/f2731817a27318eb4c94fd5f8cbc799cb68c8dfb))
+
 # [1.2.0](https://github.com/simple-deck/e2e/compare/v1.1.2...v1.2.0) (2021-09-08)
 
 
