@@ -1,3 +1,11 @@
+## [1.3.1](https://github.com/simple-deck/e2e/compare/v1.3.0...v1.3.1) (2021-09-08)
+
+
+### Bug Fixes
+
+* **results processor:** :bug: exports processor enum ([d985450](https://github.com/simple-deck/e2e/commit/d985450deb03d4433e399642d9b957611623c242))
+* **results processor:** :bug: write junit timings in seconds ([b2698ba](https://github.com/simple-deck/e2e/commit/b2698bade48836bd8522755432fdbc323b2dc35b))
+
 # [1.3.0](https://github.com/simple-deck/e2e/compare/v1.2.0...v1.3.0) (2021-09-08)
 
 
