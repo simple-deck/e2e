@@ -8,7 +8,10 @@
   ],
   "compilerOptions": {
     "composite": true,
+    "useDefineForClassFields": true,
+    "sourceMap": true,
     "baseUrl": "./src",
+    "outDir": "./sample-out",
     "paths": {
       "@simple-deck/e2e-runner": ["./lib/"]
     }

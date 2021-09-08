@@ -24,6 +24,9 @@ jobs:
     - name: Install
       run: npm ci
 
+    - name: Install Playwright deps
+      run: npx playwright install-deps
+
     # Run tests
     - name: Lint
       run: npm run lint
@@ -31,6 +34,10 @@ jobs:
     # Run tests
     - name: Test
       run: npm test
+
+    # Run sample
+    - name: Test
+      run: npm run run:sample
 
     - name: Codecov
       uses: codecov/codecov-action@v1.2.1

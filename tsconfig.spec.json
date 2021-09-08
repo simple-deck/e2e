@@ -6,6 +6,7 @@
   ],
   "compilerOptions": {
     "composite": true,
+    "sourceMap": true,
     "baseUrl": "./src"
   }
 }

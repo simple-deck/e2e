@@ -9,6 +9,7 @@
   ],
   "compilerOptions": {
     "composite": true,
-    "baseUrl": "./src"
+    "baseUrl": "./src",
+    "useDefineForClassFields": true
   }
 }

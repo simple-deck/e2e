@@ -1,9 +1,8 @@
 export {
-  BaseSuite
+  BaseSuite,
+  CoreSuite
 } from './base-suite';
-export {
-  Suite
-} from './decorators';
+export * from './decorators';
 export {
   SuiteRunner
 } from './suite-runner';
