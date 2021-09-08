@@ -25,7 +25,7 @@ jobs:
       run: npm ci
 
     - name: Install Playwright deps
-      run: sudo npx playwright install-deps
+      run: npx playwright install-deps
 
     # Run tests
     - name: Lint
@@ -34,7 +34,6 @@ jobs:
     # Run tests
     - name: Test
       run: npm test
-
 
     # Run sample
     - name: Test
