@@ -4,7 +4,7 @@ import { BrowserContext, chromium, firefox, Page, webkit } from 'playwright';
 import { parentPort, workerData } from 'worker_threads';
 import { BaseSuite, CoreSuite } from '../lib/base-suite';
 import { testBaseSuite } from './base-suite';
-import { Browsers, DataForSuiteWorker, RunOptions, RunResult, SuccessRunResult, SuiteStorage, Type } from './typings';
+import { Browsers, DataForSuiteWorker, RunOptions, SpecResult, SuiteStorage, TestResult, Type } from './typings';
 const dataForSuiteWorker: DataForSuiteWorker = workerData;
 
 export class SuiteRunnerWorker {
@@ -33,7 +33,7 @@ export class SuiteRunnerWorker {
   }
 
   private emitDataAsWorker<T> (
-    result: RunResult<T>
+    result: TestResult<T>
   ) {
     parentPort?.postMessage(result);
   }
@@ -79,7 +79,15 @@ export class SuiteRunnerWorker {
 
       this.emitDataAsWorker({
         success: false,
-        error: formattedError
+        specs: [{
+          specName: '',
+          success: false,
+          error: formattedError,
+          time: 0
+        }],
+        result: null,
+        time: 0,
+        suiteName: suiteName
       });
     }
 
@@ -90,20 +98,40 @@ export class SuiteRunnerWorker {
   }
   
   private async runCoreSuite (suite: CoreSuite, doScreenshot: boolean | undefined) {
+    const overallStart = Date.now();
     const steps = this.suiteConfig.steps;
     const allSteps = Object.keys(steps)
       .map(step => +step)
       .sort()
       .map(step => steps[step]);
 
+    const specResults: SpecResult[] = [];
+    let success = true;
     for (const method of allSteps) {
       const start = Date.now();
-      await suite[method]();
+      try {
+        await suite[method]();
+      } catch (e) {
+        specResults.push({
+          success: false,
+          time: Date.now() - start,
+          specName: method,
+          error: e.stack ?? e.message ?? e
+        });
+        success = false;
+        break;
+      }
       const testName = `${suite.constructor.name}#${method}`;
+      const specResult: SpecResult = {
+        success: true,
+        specName: method,
+        time: Date.now() - start
+      };
       if (doScreenshot) {
         await suite.screenshotPage(`${testName}.png`);
       }
-      this.debugAsWorker(`${testName} took ${Date.now() - start}ms`);
+
+      this.debugAsWorker(`${testName} took ${specResult.time}ms`);
     }
 
     const finalSuiteResult = Object.keys(suite)
@@ -120,23 +148,50 @@ export class SuiteRunnerWorker {
       }, {});
 
     this.emitDataAsWorker({
-      success: true,
-      result: JSON.stringify(finalSuiteResult)
+      suiteName: suite.constructor.name,
+      success,
+      time: Date.now() - overallStart,
+      result: JSON.stringify(finalSuiteResult),
+      specs: specResults
     });
   }
 
   private async runBaseSuite (suite: BaseSuite<unknown>, doScreenshot: boolean | undefined) {
     const testName = `${suite.constructor.name}`;
     const start = Date.now();
-    const result = await suite.main();
+    let success = true;
+    let result: unknown;
+    let specResult: SpecResult;
+    try {
+      result = await suite.main();
+      specResult = {
+        time: 0,
+        success: true,
+        specName: 'main'
+      };
+    } catch (e) {
+      success = false;
+      specResult = {
+        success: false,
+        error: e.stack ?? e.message ?? e,
+        time: 0,
+        specName: 'main'
+      };
+    }
+    const time = Date.now() - start;
     this.debugAsWorker(`${testName} took ${Date.now() - start}ms`);
     if (doScreenshot) {
       await suite.screenshotPage(`${testName}.png`);
     }
 
+    specResult.time = time;
+
     this.emitDataAsWorker({
-      success: true,
-      result
+      suiteName: testName,
+      success,
+      result,
+      specs: [specResult],
+      time
     });
   }
 
@@ -152,7 +207,7 @@ export class SuiteRunnerWorker {
     return suite;
   }
 
-  private getArgsForSuite (resultStorage: Map<string, SuccessRunResult<string>>) {
+  private getArgsForSuite (resultStorage: Map<string, TestResult<string>>) {
     return this.suiteConfig.config.dependsOn.map((dependent: Type<CoreSuite>) => {
       const resultFromStorage = resultStorage.get(dependent.name);
 
