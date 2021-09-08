@@ -6,30 +6,30 @@ describe(ResultsProcessor, () => {
     const processor = new ResultsProcessor();
     
     const results: TestResult<unknown>[] = [{
-      time: 5,
+      time: 5000,
       specs: [{
         specName: 'Spec 1',
         success: true,
-        time: 1
+        time: 1000
       }, {
         specName: 'Spec 2',
         success: true,
-        time: 1
+        time: 1000
       }],
       result: null,
       success: true,
       suiteName: 'Suite 1'
     }, {
-      time: 5,
+      time: 5000,
       specs: [{
         specName: 'Spec 1',
         success: true,
-        time: 1
+        time: 1000
       }, {
         specName: 'Spec 2',
         success: false,
         error: 'error in spec 2',
-        time: 1
+        time: 1000
       }],
       result: null,
       success: false,

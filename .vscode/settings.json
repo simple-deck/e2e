@@ -3,6 +3,7 @@
     "base suite",
     "core suite",
     "samples",
-    "suite-runner-worker"
+    "suite-runner-worker",
+    "results processor"
   ]
 }

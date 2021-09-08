@@ -7,6 +7,7 @@ export {
   SuiteRunner
 } from './suite-runner';
 export {
-  Browsers
+  Browsers,
+  TestResultsProcessor
 } from './typings';
 

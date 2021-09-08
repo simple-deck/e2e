@@ -40,7 +40,7 @@ export class ResultsProcessor {
           name: packageJson.name,
           tests: results.reduce((acc, result) => acc + result.specs.length, 0),
           failures,
-          time: overallTime
+          time: overallTime / 1000
         },
         testsuite: results.map(result => {
           return {
@@ -49,14 +49,14 @@ export class ResultsProcessor {
               name: result.suiteName,
               tests: result.specs.length,
               failures: result.specs.filter(spec => !spec.success).length,
-              time: result.time
+              time: result.time / 1000
             },
             testcase: result.specs.map(spec => {
               return {
                 $: {
                   id: result.suiteName + '#' + spec.specName,
                   name: spec.specName,
-                  time: spec.time
+                  time: spec.time / 1000
                 },
                 failure: spec.success ? [] : [{
                   $: {
