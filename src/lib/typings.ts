@@ -38,18 +38,6 @@ export interface SuiteStorage<T extends CoreSuite, A extends unknown[]> {
   suite: { new(...args: A): T; };
 }
 
-export interface SuccessRunResult<T> {
-  success: true;
-  result: T;
-}
-
-export interface FailRunResult {
-  success: false;
-  error: string;
-}
-
-export type RunResult<T> = SuccessRunResult<T> | FailRunResult;
-
 export type SuiteArgs<T> = {
   [P in keyof T]: T[P] extends Type<BaseSuite<infer R>> ? R : T[P] extends Type<CoreSuite> ? PrimitiveMap<T[P]> : never;
 };
@@ -58,7 +46,7 @@ export interface DataForSuiteWorker {
   browser: Browsers;
   suiteName: string;
   sharedData: SharedArrayBuffer;
-  resultStorage: Map<string, SuccessRunResult<string>>;
+  resultStorage: Map<string, TestResult<string>>;
 }
 
 export type PrimitiveKeys<T> = {
@@ -81,6 +69,10 @@ export enum StepError {
   methodOnMultipleSteps = 'Method present for multiple steps',
   missingStep = 'Missing step',
   noSteps = 'No steps found'
+}
+
+export enum TestResultsProcessor {
+  JUnit
 }
 
 export interface RunOptions {
@@ -108,4 +100,36 @@ export interface RunOptions {
    * Defaults to `true`
    */
   screenshotBetweenStages?: boolean;
+  /**
+   * Specify how the test results will be outputted
+   */
+  testResults?: {
+    processor: TestResultsProcessor;
+    location: string
+  }
+}
+
+interface BaseResult {
+  specName: string;
+  time: number;
+}
+
+
+export interface PassResult extends BaseResult {
+  success: true;
+}
+
+export interface FailResult extends BaseResult {
+  success: false;
+  error: string;
+}
+
+export type SpecResult = (PassResult | FailResult);
+
+export interface TestResult<T> {
+  suiteName: string;
+  success: boolean;
+  time: number;
+  specs: SpecResult[];
+  result: T;
 }

@@ -1,8 +1,9 @@
 import { sync } from 'glob';
 import { isMainThread, Worker, workerData } from 'worker_threads';
 import { BaseSuite, CoreSuite } from './base-suite';
+import { ResultsProcessor } from './results-processor';
 import { SuiteRunnerWorker } from './suite-runner-worker';
-import { Browsers, DataForSuiteWorker, FunctionKeys, RunOptions, RunResult, StepError, SuccessRunResult, SuiteArgs, SuiteConfig, SuiteStorage, Type } from './typings';
+import { Browsers, DataForSuiteWorker, FailResult, FunctionKeys, RunOptions, StepError, SuiteArgs, SuiteConfig, SuiteStorage, TestResult, TestResultsProcessor, Type } from './typings';
 const dataForSuiteWorker: DataForSuiteWorker = workerData;
 
 /* tracks test suite configs */
@@ -15,7 +16,7 @@ const rootSuites: string[] = [];
 /* tracks what test suites have run */
 const completionStorage = new Map<string, boolean>();
 /* tracks the results of the test suites that have run */
-const suiteResultStorage = new Map<string, SuccessRunResult<string>>();
+const suiteResultStorage = new Map<string, TestResult<string>>();
 
 export class SuiteRunner {
   private static configStorage = configStorage;
@@ -136,7 +137,7 @@ export class SuiteRunner {
     const workerName = `worker for ${suiteName} on ${browser}`;
     console.log(`spawning:`, workerName);
 
-    return new Promise<SuccessRunResult<string>>((res, rej) => {
+    return new Promise<TestResult<string>>((res, rej) => {
       const worker = this.createWorker({
         sharedData: this.sharedData,
         suiteName,
@@ -144,14 +145,15 @@ export class SuiteRunner {
         resultStorage: SuiteRunner.suiteResultStorage
       });
   
-      worker.on('message', async (result: RunResult<string>) => {
+      worker.on('message', async (result: TestResult<string>) => {
         if (result.success) {
           console.log(workerName, `succeeded with`, result);
           res(result);
           SuiteRunner.suiteResultStorage.set(suiteName, result);
         } else if (result.success === false) {
+          const errorSpec = result.specs.find(spec => spec.success === false) as FailResult;
           // console.log(workerName, 'failed with', result.error);
-          rej(result.error);
+          rej(errorSpec?.error);
         }
       });
       
@@ -198,6 +200,7 @@ export class SuiteRunner {
     }
 
     if (isMainThread) {
+      const start = Date.now();
       if (runBrowsersInParallel) {
         await Promise.all(browsers.map(async (browser) => {
           await suiteRunner.runInMain(browser);
@@ -206,6 +209,18 @@ export class SuiteRunner {
         for (const browser of browsers) {
           await suiteRunner.runInMain(browser);
         }
+      }
+
+      const allResults = [...SuiteRunner.suiteResultStorage.values()];
+
+      if (options.testResults) {
+        const processor = new ResultsProcessor();
+        await processor.writeResults(
+          options.testResults.processor,
+          allResults,
+          Date.now() - start,
+          options.testResults.location
+        );
       }
     } else {
       const suiteRunnerWorker = new SuiteRunnerWorker(
