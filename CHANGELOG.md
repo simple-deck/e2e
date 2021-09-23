@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/simple-deck/e2e/compare/v1.3.1...v1.3.2) (2021-09-23)
+
+
+### Bug Fixes
+
+* log result parse error ([e842b44](https://github.com/simple-deck/e2e/commit/e842b445ffbf88a40d9828b0fbb58ee78558a734))
+
 ## [1.3.1](https://github.com/simple-deck/e2e/compare/v1.3.0...v1.3.1) (2021-09-08)
 
 
