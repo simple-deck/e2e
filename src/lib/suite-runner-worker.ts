@@ -163,7 +163,7 @@ export class SuiteRunnerWorker {
     let result: unknown;
     let specResult: SpecResult;
     try {
-      result = await suite.main();
+      result = (await suite.main()) ?? null;
       specResult = {
         time: 0,
         success: true,
