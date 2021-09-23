@@ -216,7 +216,9 @@ export class SuiteRunnerWorker {
       }
       try {
         return JSON.parse(resultFromStorage.result);
-      } catch (e) {
+      } catch (e: unknown) {
+        const error = e as Error;
+        console.error(error);
         throw new Error('Failed to parse result from storage for ' + dependent.name);
       }
     });

@@ -3,7 +3,7 @@ import { isMainThread, Worker, workerData } from 'worker_threads';
 import { BaseSuite, CoreSuite } from './base-suite';
 import { ResultsProcessor } from './results-processor';
 import { SuiteRunnerWorker } from './suite-runner-worker';
-import { Browsers, DataForSuiteWorker, FailResult, FunctionKeys, RunOptions, StepError, SuiteArgs, SuiteConfig, SuiteStorage, TestResult, TestResultsProcessor, Type } from './typings';
+import { Browsers, DataForSuiteWorker, FailResult, FunctionKeys, RunOptions, StepError, SuiteArgs, SuiteConfig, SuiteStorage, TestResult, Type } from './typings';
 const dataForSuiteWorker: DataForSuiteWorker = workerData;
 
 /* tracks test suite configs */
