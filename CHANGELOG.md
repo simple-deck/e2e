@@ -1,3 +1,10 @@
+## [1.3.3](https://github.com/simple-deck/e2e/compare/v1.3.2...v1.3.3) (2021-09-23)
+
+
+### Bug Fixes
+
+* **suite-runner-worker:** :bug: ensures undefined is coalesced to null ([8703379](https://github.com/simple-deck/e2e/commit/8703379084db872afe1e90b1498bdae5fe6d241c))
+
 ## [1.3.2](https://github.com/simple-deck/e2e/compare/v1.3.1...v1.3.2) (2021-09-23)
 
 
