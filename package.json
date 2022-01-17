@@ -6,9 +6,11 @@
   "scripts": {
     "prerun:sample": "npm run build:sample",
     "run:sample": "node ./sample-out/sample/index.js",
+    "prebuild:sample": "npm run clean",
     "build:sample": "tsc -p ./tsconfig.sample.json",
     "build": "tsc -p ./tsconfig.build.json",
-    "prebuild": "rm -rf dist",
+    "prebuild": "npm run clean",
+    "clean": "rm -rf dist ; rm *.tsbuildinfo",
     "prerelease": "npm run prep-package",
     "release": "semantic-release",
     "postbuild": "cp src/cli dist/src/cli; npm run prep-package;",

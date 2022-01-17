@@ -99,17 +99,7 @@ export class SuiteRunner {
     return suites.reduce<[string[], string[]]>((acc, suite) => {
       const conf = this.getSuiteConfig(suite);
 
-      if (conf.config.runInIsolation) {
-        return [
-          [
-            ...acc[0],
-            suite
-          ],
-          [
-            ...acc[1]
-          ]
-        ];
-      } else {
+      if (conf.config.runInIsolation === false && process.env.SD_EXPERIMENTAL_CONCURRENCY === 'enabled') {
         return [
           [
             ...acc[0]
@@ -117,6 +107,16 @@ export class SuiteRunner {
           [
             ...acc[1],
             suite
+          ]
+        ];
+      } else {
+        return [
+          [
+            ...acc[0],
+            suite
+          ],
+          [
+            ...acc[1]
           ]
         ];
       }

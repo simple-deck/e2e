@@ -4,7 +4,8 @@
     "core suite",
     "samples",
     "suite-runner-worker",
-    "results processor"
+    "results processor",
+    "suite-runner"
   ],
   "typescript.tsdk": "node_modules/typescript/lib"
 }

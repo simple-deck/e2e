@@ -28,6 +28,8 @@ export interface SuiteConfig<T extends (readonly Type<CoreSuite>[])> {
   screenshotBetweenStages?: boolean;
   /**
    * Runs the suite in isolation (prevents other concurrent suites from running until this completes)
+   * 
+   * @ignore used only for experiments DOES NOT WORK
    */
   runInIsolation?: boolean;
 }
