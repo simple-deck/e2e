@@ -1,6 +1,7 @@
 import { sync } from 'glob';
 import { isMainThread, Worker, workerData } from 'worker_threads';
 import { BaseSuite, CoreSuite } from './base-suite';
+import { CachedMap } from './cached-map';
 import { ResultsProcessor } from './results-processor';
 import { SuiteRunnerWorker } from './suite-runner-worker';
 import { Browsers, DataForSuiteWorker, FailResult, FunctionKeys, RunOptions, StepError, SuiteArgs, SuiteConfig, SuiteStorage, TestResult, Type } from './typings';
@@ -13,8 +14,6 @@ const dependencyStorage = new Map<string, string[]>();
 /* Suites with no depends on */
 const rootSuites: string[] = [];
 
-/* tracks what test suites have run */
-const completionStorage = new Map<string, boolean>();
 /* tracks the results of the test suites that have run */
 const suiteResultStorage = new Map<string, TestResult<string>>();
 
@@ -22,7 +21,6 @@ export class SuiteRunner {
   private static configStorage = configStorage;
   private static dependencyStorage = dependencyStorage;
   private static rootSuites = rootSuites;
-  private static completionStorage = completionStorage;
   private static suiteResultStorage = suiteResultStorage;
 
 
@@ -57,14 +55,15 @@ export class SuiteRunner {
     try {
       console.log('running ', suiteName, ' in ', browser);
       const result = await this.awaitWorker(suiteName, browser);
+
       SuiteRunner.suiteResultStorage.set(suiteName, result);
-      SuiteRunner.completionStorage.set(suiteName, true);
+
       const triggeredSuites = SuiteRunner.dependencyStorage.get(suiteName) ?? [];
       const readySuites = triggeredSuites.filter((triggeredSuite) => {
         const dependentSuites = this.getSuiteConfig(triggeredSuite).config.dependsOn;
   
         const shouldRunSuite = dependentSuites.every((suite: Type<CoreSuite>) => {
-          return SuiteRunner.completionStorage.get(suite.name) ?? false;
+          return SuiteRunner.suiteResultStorage.get(suite.name)?.success ?? false;
         });
 
         return shouldRunSuite;
@@ -183,7 +182,11 @@ export class SuiteRunner {
         headless: true
       },
       runBrowsersInParallel = false,
-      screenshotBetweenStages = true
+      screenshotBetweenStages = true,
+      autoResume = {
+        enabled: false,
+        location: ''
+      },
     } = options;
 
     const conf = {
@@ -193,6 +196,11 @@ export class SuiteRunner {
       runBrowsersInParallel,
       screenshotBetweenStages
     };
+
+    if (autoResume.enabled) {
+      SuiteRunner.suiteResultStorage = new CachedMap(autoResume.location);
+    }
+
     const suiteRunner = new SuiteRunner();
 
     if (importFilePattern) {

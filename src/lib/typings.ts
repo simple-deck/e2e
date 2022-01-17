@@ -106,7 +106,24 @@ export interface RunOptions {
   testResults?: {
     processor: TestResultsProcessor;
     location: string
-  }
+  };
+  /**
+   * Configuration for resuming tests after failures
+   */
+  autoResume?: AutoResumeOptions;
+}
+
+interface AutoResumeOptions {
+  /**
+   * If tests fail, when restarting, resume at the failed suite
+   * 
+   * Defaults to `false`
+   */
+  enabled: boolean;
+  /**
+   * File to store the successful test results
+   */
+  location: string;
 }
 
 interface BaseResult {
