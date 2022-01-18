@@ -22,8 +22,6 @@ export class GoogleBase extends BaseSuite<void> {
 
     await this.imageButton?.click();
 
-    await this.page.waitForNavigation();
-
     const imagesTitle = await this.page.title();
 
     expect(imagesTitle).to.match(/Images/);

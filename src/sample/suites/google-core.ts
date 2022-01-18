@@ -24,9 +24,7 @@ export class Google extends CoreSuite {
 
   @Step(2)
   async testImages (): Promise<void> {
-    await this.imageButton?.click();
-
-    await this.page.waitForNavigation();
+    await this.imageButton!.click();
 
     const title = await this.page.title();
 

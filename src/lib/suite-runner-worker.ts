@@ -109,6 +109,8 @@ export class SuiteRunnerWorker {
     let success = true;
     for (const method of allSteps) {
       const start = Date.now();
+      const testName = `${suite.constructor.name}#${method}`;
+
       try {
         await suite[method]();
       } catch (e) {
@@ -119,11 +121,15 @@ export class SuiteRunnerWorker {
           error: e.stack ?? e.message ?? e
         });
         success = false;
+
+        if (doScreenshot) {
+          await suite.screenshotPage(`${testName}.png`);
+        }
+
         break;
       }
-      const testName = `${suite.constructor.name}#${method}`;
       const specResult: SpecResult = {
-        success: true,
+        success: success,
         specName: method,
         time: Date.now() - start
       };
