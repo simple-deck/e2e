@@ -1,3 +1,10 @@
+## [2.0.2](https://github.com/simple-deck/e2e/compare/v2.0.1...v2.0.2) (2022-01-18)
+
+
+### Bug Fixes
+
+* **suite-runner:** :bug: properly handle suite errors ([f8fa6ec](https://github.com/simple-deck/e2e/commit/f8fa6ec747b7b48c852ae14c5e2df1870f32ddb0))
+
 ## [2.0.1](https://github.com/simple-deck/e2e/compare/v2.0.0...v2.0.1) (2022-01-18)
 
 
