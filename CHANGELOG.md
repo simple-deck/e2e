@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/simple-deck/e2e/compare/v2.0.0...v2.0.1) (2022-01-18)
+
+
+### Bug Fixes
+
+* **suite-runner:** :bug: ensure storage is respected and cleared ([08ab263](https://github.com/simple-deck/e2e/commit/08ab263d347aae95e00ba9ab837fe4dea475ee60))
+
 # [2.0.0](https://github.com/simple-deck/e2e/compare/v1.3.3...v2.0.0) (2022-01-18)
 
 
