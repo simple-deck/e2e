@@ -134,6 +134,13 @@ export class SuiteRunner {
     browser: Browsers
   ) {
     const workerName = `worker for ${suiteName} on ${browser}`;
+    const existingResult = SuiteRunner.suiteResultStorage.get(suiteName);
+    if (existingResult?.success) {
+      console.log(`skipping: ${workerName}`);
+
+      return existingResult;
+    }
+
     console.log(`spawning:`, workerName);
 
     return new Promise<TestResult<string>>((res, rej) => {
@@ -169,7 +176,7 @@ export class SuiteRunner {
     
     const [isolatedSuites, concurrentSuites] = this.determineIsolatedSuites(SuiteRunner.rootSuites);
     await this.executeSuitesInOrder(isolatedSuites, browser, concurrentSuites);
-
+    SuiteRunner.suiteResultStorage.clear();
     console.log('All tests finished in: ', Date.now() - start);
   }
 
