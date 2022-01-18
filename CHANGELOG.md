@@ -1,3 +1,21 @@
+# [2.0.0](https://github.com/simple-deck/e2e/compare/v1.3.3...v2.0.0) (2022-01-18)
+
+
+### Bug Fixes
+
+* **suite-runner:** :bug: deprecates concurrect suites ([da6602f](https://github.com/simple-deck/e2e/commit/da6602f0cfcff937ae114059f085b13984efcf46))
+* **suite-runner-worker:** screenshot on error ([4d6abc4](https://github.com/simple-deck/e2e/commit/4d6abc4670e9895cfb58c63eafa74cf9586a0fae))
+
+
+### Features
+
+* add support for caching results ([2492651](https://github.com/simple-deck/e2e/commit/24926512e530a5a9b8b86001afaaab145f46f60b))
+
+
+### BREAKING CHANGES
+
+* **suite-runner:** concurrent suites are deprecated
+
 ## [1.3.3](https://github.com/simple-deck/e2e/compare/v1.3.2...v1.3.3) (2021-09-23)
 
 
