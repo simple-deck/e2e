@@ -2,6 +2,7 @@ import { sync } from 'glob';
 import { isMainThread, Worker, workerData } from 'worker_threads';
 import { BaseSuite, CoreSuite } from './base-suite';
 import { CachedMap } from './cached-map';
+import { generateSuiteResultKey } from './generate-suite-result-key';
 import { ResultsProcessor } from './results-processor';
 import { SuiteRunnerWorker } from './suite-runner-worker';
 import { Browsers, DataForSuiteWorker, FailResult, FunctionKeys, RunOptions, StepError, SuiteArgs, SuiteConfig, SuiteStorage, TestResult, Type } from './typings';
@@ -23,6 +24,14 @@ export class SuiteRunner {
   private static rootSuites = rootSuites;
   private static suiteResultStorage = suiteResultStorage;
 
+
+  static setSuiteResult (browserName: Browsers, suiteName: string, result: TestResult<string>): void {
+    this.suiteResultStorage.set(generateSuiteResultKey(browserName, suiteName), result);
+  }
+
+  static getSuiteResult (browserName: Browsers, suiteName: string): TestResult<string>|undefined {
+    return this.suiteResultStorage.get(generateSuiteResultKey(browserName, suiteName));
+  }
 
   private sharedData = new SharedArrayBuffer(256 * 1024);
 
@@ -52,32 +61,24 @@ export class SuiteRunner {
     suiteName: string,
     browser: Browsers
   ): Promise<void> {
-    try {
-      console.log('running ', suiteName, ' in ', browser);
-      const result = await this.awaitWorker(suiteName, browser);
+    console.log('running ', suiteName, ' in ', browser);
+    const result = await this.awaitWorker(suiteName, browser);
 
-      SuiteRunner.suiteResultStorage.set(suiteName, result);
+    SuiteRunner.setSuiteResult(browser, suiteName, result);
 
-      const triggeredSuites = SuiteRunner.dependencyStorage.get(suiteName) ?? [];
-      const readySuites = triggeredSuites.filter((triggeredSuite) => {
-        const dependentSuites = this.getSuiteConfig(triggeredSuite).config.dependsOn;
-  
-        const shouldRunSuite = dependentSuites.every((suite: Type<CoreSuite>) => {
-          return SuiteRunner.suiteResultStorage.get(suite.name)?.success ?? false;
-        });
+    const triggeredSuites = SuiteRunner.dependencyStorage.get(suiteName) ?? [];
+    const readySuites = triggeredSuites.filter((triggeredSuite) => {
+      const dependentSuites = this.getSuiteConfig(triggeredSuite).config.dependsOn;
 
-        return shouldRunSuite;
+      const shouldRunSuite = dependentSuites.every((suite: Type<CoreSuite>) => {
+        return SuiteRunner.getSuiteResult(browser, suite.name)?.success ?? false;
       });
 
-      const [isolatedSuites, concurrentSuites] = this.determineIsolatedSuites(readySuites);
-      await this.executeSuitesInOrder(isolatedSuites, browser, concurrentSuites);
-    } catch (e) {
-      if (e) {
-        console.error(e);
-      }
+      return shouldRunSuite;
+    });
 
-      process.exit(1);
-    }
+    const [isolatedSuites, concurrentSuites] = this.determineIsolatedSuites(readySuites);
+    await this.executeSuitesInOrder(isolatedSuites, browser, concurrentSuites);
   }
 
   private async executeSuitesInOrder (isolatedSuites: string[], browser: Browsers, concurrentSuites: string[]) {
@@ -129,12 +130,12 @@ export class SuiteRunner {
     });
   }
 
-  private awaitWorker (
+  private async awaitWorker (
     suiteName: string,
     browser: Browsers
   ) {
     const workerName = `worker for ${suiteName} on ${browser}`;
-    const existingResult = SuiteRunner.suiteResultStorage.get(suiteName);
+    const existingResult = SuiteRunner.getSuiteResult(browser, suiteName);
     if (existingResult?.success) {
       console.log(`skipping: ${workerName}`);
 
@@ -155,12 +156,12 @@ export class SuiteRunner {
         if (result.success) {
           console.log(workerName, `succeeded with`, result);
           res(result);
-          SuiteRunner.suiteResultStorage.set(suiteName, result);
         } else if (result.success === false) {
           const errorSpec = result.specs.find(spec => spec.success === false) as FailResult;
           // console.log(workerName, 'failed with', result.error);
           rej(errorSpec?.error);
         }
+        SuiteRunner.setSuiteResult(browser, suiteName, result);
       });
       
       worker.on('error', (err) => {
@@ -171,17 +172,23 @@ export class SuiteRunner {
   }
 
 
-  private async runInMain (browser: Browsers) {
+  private async runInMain (browser: Browsers): Promise<boolean> {
     const start = Date.now();
     
     const [isolatedSuites, concurrentSuites] = this.determineIsolatedSuites(SuiteRunner.rootSuites);
-    await this.executeSuitesInOrder(isolatedSuites, browser, concurrentSuites);
-    SuiteRunner.suiteResultStorage.clear();
+    try {
+      await this.executeSuitesInOrder(isolatedSuites, browser, concurrentSuites);
+    } catch (e) {
+      console.error(`${browser} failed with ${e}`);
+
+      return false;
+    }
     console.log('All tests finished in: ', Date.now() - start);
+
+    return true;
   }
 
   static async run (options: RunOptions): Promise<void> {
-
     const {
       importFilePattern,
       browsers = [],
@@ -215,15 +222,27 @@ export class SuiteRunner {
     }
 
     if (isMainThread) {
+      let allPassed = true;
       const start = Date.now();
       if (runBrowsersInParallel) {
         await Promise.all(browsers.map(async (browser) => {
-          await suiteRunner.runInMain(browser);
+          const thisPassed = await suiteRunner.runInMain(browser);
+          if (!thisPassed) {
+            allPassed = false;
+          }
         }));
       } else {
         for (const browser of browsers) {
-          await suiteRunner.runInMain(browser);
+          const thisPassed = await suiteRunner.runInMain(browser);
+
+          if (!thisPassed) {
+            allPassed = false;
+          }
         }
+      }
+
+      if (allPassed) {
+        SuiteRunner.suiteResultStorage.clear();
       }
 
       const allResults = [...SuiteRunner.suiteResultStorage.values()];
@@ -236,6 +255,10 @@ export class SuiteRunner {
           Date.now() - start,
           options.testResults.location
         );
+      }
+
+      if (!allPassed) {
+        process.exit(1);
       }
     } else {
       const suiteRunnerWorker = new SuiteRunnerWorker(

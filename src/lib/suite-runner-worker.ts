@@ -4,6 +4,7 @@ import { BrowserContext, chromium, firefox, Page, webkit } from 'playwright';
 import { parentPort, workerData } from 'worker_threads';
 import { BaseSuite, CoreSuite } from '../lib/base-suite';
 import { testBaseSuite } from './base-suite';
+import { generateSuiteResultKey } from './generate-suite-result-key';
 import { Browsers, DataForSuiteWorker, RunOptions, SpecResult, SuiteStorage, TestResult, Type } from './typings';
 const dataForSuiteWorker: DataForSuiteWorker = workerData;
 
@@ -215,7 +216,7 @@ export class SuiteRunnerWorker {
 
   private getArgsForSuite (resultStorage: Map<string, TestResult<string>>) {
     return this.suiteConfig.config.dependsOn.map((dependent: Type<CoreSuite>) => {
-      const resultFromStorage = resultStorage.get(dependent.name);
+      const resultFromStorage = resultStorage.get(generateSuiteResultKey(dataForSuiteWorker.browser, dependent.name));
 
       if (!resultFromStorage) {
         throw new Error('Could not look up result for ' + dependent.name);

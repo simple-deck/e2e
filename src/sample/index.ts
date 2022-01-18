@@ -1,3 +1,4 @@
+import { resolve } from 'path';
 import { Browsers, SuiteRunner } from '../lib/';
 import { Google } from './suites/google-core';
 export { Google };
@@ -13,5 +14,9 @@ SuiteRunner.run({
     timeout: 90000
   },
   importFilePattern: './suites/**/*.js',
-  screenshotBetweenStages: true
+  screenshotBetweenStages: true,
+  autoResume: {
+    enabled: true,
+    location: resolve(process.cwd(), 'cache')
+  }
 });
