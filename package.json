@@ -10,7 +10,7 @@
     "build:sample": "tsc -p ./tsconfig.sample.json",
     "build": "tsc -p ./tsconfig.build.json",
     "prebuild": "npm run clean",
-    "clean": "rm -rf dist ; rm *.tsbuildinfo",
+    "clean": "rm -rf dist ; rm -f *.tsbuildinfo",
     "prerelease": "npm run prep-package",
     "release": "semantic-release",
     "postbuild": "cp src/cli dist/src/cli; npm run prep-package;",
