@@ -1,3 +1,10 @@
+## [2.0.3](https://github.com/simple-deck/e2e/compare/v2.0.2...v2.0.3) (2022-01-24)
+
+
+### Bug Fixes
+
+* **suite-runner:** :bug: only log file matches on main thread ([5f19c4e](https://github.com/simple-deck/e2e/commit/5f19c4ef563684bd85488ccf95463a233d724d5a)), closes [#5](https://github.com/simple-deck/e2e/issues/5)
+
 ## [2.0.2](https://github.com/simple-deck/e2e/compare/v2.0.1...v2.0.2) (2022-01-18)
 
 
