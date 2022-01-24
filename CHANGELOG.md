@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/simple-deck/e2e/compare/v2.0.3...v2.1.0) (2022-01-24)
+
+
+### Features
+
+* :children_crossing: make shared data more usable ([f055ee6](https://github.com/simple-deck/e2e/commit/f055ee6f775a3eafaafcf9fee1e0ad5cf232f729)), closes [#9](https://github.com/simple-deck/e2e/issues/9)
+
 ## [2.0.3](https://github.com/simple-deck/e2e/compare/v2.0.2...v2.0.3) (2022-01-24)
 
 
