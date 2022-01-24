@@ -280,7 +280,9 @@ export class SuiteRunner {
       absolute: true
     });
 
-    console.log('matched', matchedFiles, 'for', filePattern, 'relative to', root);
+    if (isMainThread) {
+      console.log('matched', matchedFiles, 'for', filePattern, 'relative to', root);
+    }
 
     // remove file extension
     const importPaths = matchedFiles.map(file => {
