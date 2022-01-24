@@ -47,8 +47,8 @@ export type SuiteArgs<T> = {
 export interface DataForSuiteWorker {
   browser: Browsers;
   suiteName: string;
-  sharedData: SharedArrayBuffer;
   resultStorage: Map<string, TestResult<string>>;
+  sharedStorage: Map<string, boolean|number|string>;
 }
 
 export type PrimitiveKeys<T> = {
@@ -145,6 +145,22 @@ export interface FailResult extends BaseResult {
 
 export type SpecResult = (PassResult | FailResult);
 
+export enum SuiteMessageType {
+  FinalResult,
+  UpdateSharedData
+}
+
+export interface SuiteResultMessage<T> {
+  type: SuiteMessageType.FinalResult;
+  result: TestResult<T>
+}
+
+export interface SuiteUpdateSharedDataMessage {
+  type: SuiteMessageType.UpdateSharedData;
+  value: string|number|boolean;
+  key: string;
+}
+
 export interface TestResult<T> {
   suiteName: string;
   success: boolean;
@@ -152,3 +168,9 @@ export interface TestResult<T> {
   specs: SpecResult[];
   result: T;
 }
+
+export type SharedStorage<K extends string> = {
+  [T in K]: string|boolean|number;
+}
+
+export const updateSharedDataEvent = 'updateValue';

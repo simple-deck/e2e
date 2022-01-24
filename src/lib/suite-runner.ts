@@ -5,7 +5,7 @@ import { CachedMap } from './cached-map';
 import { generateSuiteResultKey } from './generate-suite-result-key';
 import { ResultsProcessor } from './results-processor';
 import { SuiteRunnerWorker } from './suite-runner-worker';
-import { Browsers, DataForSuiteWorker, FailResult, FunctionKeys, RunOptions, StepError, SuiteArgs, SuiteConfig, SuiteStorage, TestResult, Type } from './typings';
+import { Browsers, DataForSuiteWorker, FailResult, FunctionKeys, RunOptions, StepError, SuiteArgs, SuiteConfig, SuiteMessageType, SuiteResultMessage, SuiteStorage, SuiteUpdateSharedDataMessage, TestResult, Type } from './typings';
 const dataForSuiteWorker: DataForSuiteWorker = workerData;
 
 /* tracks test suite configs */
@@ -18,11 +18,15 @@ const rootSuites: string[] = [];
 /* tracks the results of the test suites that have run */
 const suiteResultStorage = new Map<string, TestResult<string>>();
 
+const sharedSuiteStorage = new Map<string, boolean|string|number>();
+
 export class SuiteRunner {
   private static configStorage = configStorage;
   private static dependencyStorage = dependencyStorage;
   private static rootSuites = rootSuites;
   private static suiteResultStorage = suiteResultStorage;
+
+  private static sharedSuiteStorage = sharedSuiteStorage;
 
 
   static setSuiteResult (browserName: Browsers, suiteName: string, result: TestResult<string>): void {
@@ -146,13 +150,43 @@ export class SuiteRunner {
 
     return new Promise<TestResult<string>>((res, rej) => {
       const worker = this.createWorker({
-        sharedData: this.sharedData,
         suiteName,
         browser,
-        resultStorage: SuiteRunner.suiteResultStorage
+        resultStorage: SuiteRunner.suiteResultStorage,
+        sharedStorage: SuiteRunner.sharedSuiteStorage
       });
   
-      worker.on('message', async (result: TestResult<string>) => {
+      const workerMessageHandler = this.handleWorkerMessage(
+        workerName,
+        (value) => {
+          worker.off('message', workerMessageHandler);
+          res(value);
+        },
+        rej,
+        browser,
+        suiteName
+      );
+
+      worker.on('message', workerMessageHandler);
+
+      worker.on('error', (err) => {
+        console.log(workerName, 'failed with', err);
+        rej(err);
+      });
+    });
+  }
+
+
+  private handleWorkerMessage (
+    workerName: string,
+    res: (value: TestResult<string> | PromiseLike<TestResult<string>>) => void,
+    rej: (reason: Error|string) => void,
+    browser: Browsers,
+    suiteName: string
+  ): (value: SuiteUpdateSharedDataMessage | SuiteResultMessage<string>) => void {
+    return async (message: SuiteUpdateSharedDataMessage | SuiteResultMessage<string>) => {
+      if (message.type === SuiteMessageType.FinalResult) {
+        const { result } = message;
         if (result.success) {
           console.log(workerName, `succeeded with`, result);
           res(result);
@@ -162,15 +196,11 @@ export class SuiteRunner {
           rej(errorSpec?.error);
         }
         SuiteRunner.setSuiteResult(browser, suiteName, result);
-      });
-      
-      worker.on('error', (err) => {
-        console.log(workerName, 'failed with', err);
-        rej(err);
-      });
-    });
+      } else if (message.type === SuiteMessageType.UpdateSharedData) {
+        SuiteRunner.sharedSuiteStorage.set(message.key, message.value);
+      }
+    };
   }
-
 
   private async runInMain (browser: Browsers): Promise<boolean> {
     const start = Date.now();
