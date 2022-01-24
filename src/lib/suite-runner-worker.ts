@@ -5,7 +5,7 @@ import { parentPort, workerData } from 'worker_threads';
 import { BaseSuite, CoreSuite } from '../lib/base-suite';
 import { testBaseSuite } from './base-suite';
 import { generateSuiteResultKey } from './generate-suite-result-key';
-import { Browsers, DataForSuiteWorker, RunOptions, SpecResult, SuiteStorage, TestResult, Type } from './typings';
+import { Browsers, DataForSuiteWorker, RunOptions, SpecResult, SuiteMessageType, SuiteResultMessage, SuiteStorage, SuiteUpdateSharedDataMessage, TestResult, Type, updateSharedDataEvent } from './typings';
 const dataForSuiteWorker: DataForSuiteWorker = workerData;
 
 export class SuiteRunnerWorker {
@@ -34,7 +34,7 @@ export class SuiteRunnerWorker {
   }
 
   private emitDataAsWorker<T> (
-    result: TestResult<T>
+    result: SuiteUpdateSharedDataMessage | SuiteResultMessage<T>
   ) {
     parentPort?.postMessage(result);
   }
@@ -43,7 +43,8 @@ export class SuiteRunnerWorker {
     const {
       suiteName,
       browser,
-      resultStorage
+      resultStorage,
+      sharedStorage
     } = dataForSuiteWorker;
 
     const browserType = this.determineBrowserFromType(browser);
@@ -59,7 +60,19 @@ export class SuiteRunnerWorker {
 
       const argsForSuite = this.getArgsForSuite(resultStorage);
 
-      const suite = this.setupSuite(argsForSuite, browserInstance, page, browser);
+      const suite = this.setupSuite(argsForSuite, browserInstance, page, browser, sharedStorage);
+      const listener = (event: {
+        key: string;
+        value: string|boolean|number;
+      }) => {
+        this.emitDataAsWorker({
+          type: SuiteMessageType.UpdateSharedData,
+          key: event.key,
+          value: event.value
+        });
+      };
+
+      suite['sharedDataChanges'].on(updateSharedDataEvent, listener);
   
       try {
         if (suite instanceof BaseSuite) {
@@ -75,20 +88,25 @@ export class SuiteRunnerWorker {
 
         throw error;
       }
+
+      suite['sharedDataChanges'].off(updateSharedDataEvent, listener);
     } catch (error) {
       const formattedError = this.potentiallyLogError(error);
 
       this.emitDataAsWorker({
-        success: false,
-        specs: [{
-          specName: '',
+        type: SuiteMessageType.FinalResult,
+        result: {
           success: false,
-          error: formattedError,
-          time: 0
-        }],
-        result: null,
-        time: 0,
-        suiteName: suiteName
+          specs: [{
+            specName: '',
+            success: false,
+            error: formattedError,
+            time: 0
+          }],
+          result: null,
+          time: 0,
+          suiteName: suiteName
+        }
       });
     }
 
@@ -155,11 +173,14 @@ export class SuiteRunnerWorker {
       }, {});
 
     this.emitDataAsWorker({
-      suiteName: suite.constructor.name,
-      success,
-      time: Date.now() - overallStart,
-      result: JSON.stringify(finalSuiteResult),
-      specs: specResults
+      type: SuiteMessageType.FinalResult,
+      result: {
+        suiteName: suite.constructor.name,
+        success,
+        time: Date.now() - overallStart,
+        result: JSON.stringify(finalSuiteResult),
+        specs: specResults
+      }
     });
   }
 
@@ -194,19 +215,29 @@ export class SuiteRunnerWorker {
     specResult.time = time;
 
     this.emitDataAsWorker({
-      suiteName: testName,
-      success,
-      result,
-      specs: [specResult],
-      time
+      type: SuiteMessageType.FinalResult,
+      result: {
+        suiteName: testName,
+        success,
+        result,
+        specs: [specResult],
+        time
+      }
     });
   }
 
-  private setupSuite (argsForSuite: unknown[], browserInstance: BrowserContext, page: Page, browser: Browsers) {
+  private setupSuite (
+    argsForSuite: unknown[],
+    browserInstance: BrowserContext,
+    page: Page,
+    browser: Browsers,
+    sharedStorage: Map<string, boolean|number|string>
+  ) {
     const suite = new this.suiteConfig.suite(
       ...argsForSuite
     );
-
+    
+    suite['sharedStorage'] = sharedStorage;
     suite['browser'] = browserInstance;
     suite['page'] = page;
     suite['browserType'] = browser;
