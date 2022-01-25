@@ -1,8 +1,9 @@
 import { expect } from 'chai';
 import { ElementHandle } from 'playwright';
 import { CoreSuite, Step, Suite } from '../../lib';
+import { GoogleBase } from './google-base';
 @Suite({
-  dependsOn: [],
+  dependsOn: [GoogleBase],
   disabled: false
 })
 export class Google extends CoreSuite {
@@ -29,5 +30,7 @@ export class Google extends CoreSuite {
     const title = await this.page.title();
 
     expect(title).to.match(/Images/);
+
+    console.log(this.getValue('asdf'));
   }
 }

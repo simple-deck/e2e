@@ -37,8 +37,6 @@ export class SuiteRunner {
     return this.suiteResultStorage.get(generateSuiteResultKey(browserName, suiteName));
   }
 
-  private sharedData = new SharedArrayBuffer(256 * 1024);
-
   /**
    * Looks for a configuration for a suite and throws an error if none exist
    *
@@ -70,29 +68,32 @@ export class SuiteRunner {
 
     SuiteRunner.setSuiteResult(browser, suiteName, result);
 
+    const readySuites = this.determineReadySuites(suiteName, browser);
+
+    const [isolatedSuites, concurrentSuites] = this.determineIsolatedSuites(readySuites);
+    await this.executeSuitesInOrder(browser, isolatedSuites, concurrentSuites);
+  }
+
+  private determineReadySuites (suiteName: string, browser: Browsers) {
+    // look up suites that this could potentially trigger
     const triggeredSuites = SuiteRunner.dependencyStorage.get(suiteName) ?? [];
+
+    // for each
     const readySuites = triggeredSuites.filter((triggeredSuite) => {
+      // look up all dependent suites
       const dependentSuites = this.getSuiteConfig(triggeredSuite).config.dependsOn;
 
+      // make sure they have ALL already run and have succeeded
       const shouldRunSuite = dependentSuites.every((suite: Type<CoreSuite>) => {
-        return SuiteRunner.getSuiteResult(browser, suite.name)?.success ?? false;
+        const result = SuiteRunner.getSuiteResult(browser, suite.name);
+
+        return result?.success ?? false;
       });
 
       return shouldRunSuite;
     });
 
-    const [isolatedSuites, concurrentSuites] = this.determineIsolatedSuites(readySuites);
-    await this.executeSuitesInOrder(isolatedSuites, browser, concurrentSuites);
-  }
-
-  private async executeSuitesInOrder (isolatedSuites: string[], browser: Browsers, concurrentSuites: string[]) {
-    for (const isolatedSuite of isolatedSuites) {
-      await this.runSuiteInMain(isolatedSuite, browser);
-    }
-
-    await Promise.all(concurrentSuites.map((triggeredSuite) => {
-      return this.runSuiteInMain(triggeredSuite, browser);
-    }));
+    return readySuites;
   }
 
   /**
@@ -100,7 +101,7 @@ export class SuiteRunner {
    * @param suites array of suite names
    * @returns tuple of [isolatedSuites and concurrentSuites]
    */
-  private determineIsolatedSuites (suites: string[]): [string[], string[]] {
+   private determineIsolatedSuites (suites: string[]): [string[], string[]] {
     return suites.reduce<[string[], string[]]>((acc, suite) => {
       const conf = this.getSuiteConfig(suite);
 
@@ -126,6 +127,20 @@ export class SuiteRunner {
         ];
       }
     }, [[], []]);
+  }
+
+  private async executeSuitesInOrder (
+    browser: Browsers,
+    isolatedSuites: string[],
+    concurrentSuites: string[]
+  ) {
+    for (const isolatedSuite of isolatedSuites) {
+      await this.runSuiteInMain(isolatedSuite, browser);
+    }
+
+    await Promise.all(concurrentSuites.map((triggeredSuite) => {
+      return this.runSuiteInMain(triggeredSuite, browser);
+    }));
   }
 
   private createWorker (data: DataForSuiteWorker) {
@@ -207,7 +222,7 @@ export class SuiteRunner {
     
     const [isolatedSuites, concurrentSuites] = this.determineIsolatedSuites(SuiteRunner.rootSuites);
     try {
-      await this.executeSuitesInOrder(isolatedSuites, browser, concurrentSuites);
+      await this.executeSuitesInOrder(browser, isolatedSuites, concurrentSuites);
     } catch (e) {
       console.error(`${browser} failed with ${e}`);
 
