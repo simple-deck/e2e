@@ -1,10 +1,11 @@
 import { BaseSuite } from './base-suite';
+import { Step, Suite } from './decorators';
 import { SuiteRunner } from './suite-runner';
-import { Browsers, StepError, SuiteStorage } from './typings';
+import { Browsers, FailResult, StepError, SuiteMessageType, SuiteResultMessage, SuiteStorage, SuiteUpdateSharedDataMessage, TestResult } from './typings';
 
 const suite = 'suite';
 
-const generateResult = () => ({
+const generateResult = (): TestResult<string> => ({
   result: '',
   specs: [],
   success: true,
@@ -268,27 +269,32 @@ describe(SuiteRunner, () => {
     it('should run isolate suites in order', async () => {
       const suiteRunner = new SuiteRunner();
 
-      // longest starts first
-      const promise1 = new Promise<void>((r) => setTimeout(() => r(), 5));
-      const promise2 = new Promise<void>((r) => setTimeout(() => r(), 3));
-      const promise3 = new Promise<void>((r) => setTimeout(() => r(), 1));
-      const promise4 = new Promise<void>((r) => setTimeout(() => r()));
+      // the second promise should not start until the first one is finished
+      const consecutive1 = () => new Promise<void>((r) => setTimeout(() => r(), 9));
+      const consecutive2 = () => new Promise<void>((r) => setTimeout(() => r(), 7));
+
+      // the second promise should resolve before the first
+      const concurrent1 = () => new Promise<void>((r) => setTimeout(() => r(), 5));
+      const concurrent2 = () => new Promise<void>((r) => r());
 
       const results: string[] = [];
 
       suiteRunner['runSuiteInMain'] = async (suiteName: string) => {
         switch (suiteName) {
           case suite1Isolate.name:
-            await promise1;
+            expect(results).toEqual([])
+            await consecutive1();
             break;
-          case suite2Isolate.name:
-            await promise2;
+            case suite2Isolate.name:
+            expect(results).toEqual([suite1Isolate.name])
+            await consecutive2();
             break;
-          case suite3Concurrent.name:
-            await promise3;
+            case suite3Concurrent.name:
+            expect(results).toEqual([suite1Isolate.name, suite2Isolate.name])
+            await concurrent1();
             break;
           case suite4Concurrent.name:
-            await promise4;
+            await concurrent2();
             break;
           default:
             throw new Error();  
@@ -303,6 +309,119 @@ describe(SuiteRunner, () => {
       );
 
       expect(results).toEqual([suite1Isolate.name, suite2Isolate.name, suite4Concurrent.name, suite3Concurrent.name]);
+    });
+  });
+
+  describe('handleWorkerMessage', () => {
+    const runner = new SuiteRunner();
+    it('should handle a successful worker result message', () => {
+      let resolveArg: any;
+      const resolve = (arg: any) => {
+        resolveArg = arg;
+      };
+      let rejectCalled = false;
+      const reject = () => {
+        rejectCalled = true;
+      };
+      const handler = runner['handleWorkerMessage']('worker', resolve, reject, Browsers.chromium, 'suiteName');
+
+      const result = generateResult();
+      result.success = true;
+      const message: SuiteResultMessage<string> = {
+        type: SuiteMessageType.FinalResult,
+        result
+      };
+
+      handler(message);
+
+      expect(resolveArg).toBe(result);
+      expect(rejectCalled).toBeFalsy();
+    });
+
+    it('should handle a failed worker result message', () => {
+      let rejectArg: any;
+      const reject = (arg: any) => {
+        rejectArg = arg;
+      };
+      let resolveCalled = false;
+      const resolve = () => {
+        resolveCalled = true;
+      };
+      const handler = runner['handleWorkerMessage']('worker', resolve, reject, Browsers.chromium, 'suiteName');
+
+      const result = generateResult();
+      result.success = false;
+      const error = 'error'
+      const spec: FailResult = {
+        specName: '',
+        success: false,
+        error,
+        time: 0
+      };
+      result.specs = [spec];
+      const message: SuiteResultMessage<string> = {
+        type: SuiteMessageType.FinalResult,
+        result
+      };
+
+      handler(message);
+
+      expect(rejectArg).toBe(error);
+      expect(resolveCalled).toBeFalsy();
+    });
+
+    it('should handle a error worker with no message', () => {
+      let rejectArg: any;
+      const reject = (arg: any) => {
+        rejectArg = arg;
+      };
+      let resolveCalled = false;
+      const resolve = () => {
+        resolveCalled = true;
+      };
+      const handler = runner['handleWorkerMessage']('worker', resolve, reject, Browsers.chromium, 'suiteName');
+
+      const result = generateResult();
+      result.success = false;
+      result.specs = [];
+      const message: SuiteResultMessage<string> = {
+        type: SuiteMessageType.FinalResult,
+        result
+      };
+
+      handler(message);
+
+      expect(rejectArg).toBe(undefined);
+      expect(resolveCalled).toBeFalsy();
+    });
+
+
+    it('should handle an update value message', () => {
+      let resolveCalled = false;
+      const resolve = (arg: any) => {
+        resolveCalled = true;
+      };
+      let rejectCalled = false;
+      const reject = () => {
+        rejectCalled = true;
+      };
+      const handler = runner['handleWorkerMessage']('worker', resolve, reject, Browsers.chromium, 'suiteName');
+
+      const key = 'key';
+      const value = 'value';
+
+      const message: SuiteUpdateSharedDataMessage = {
+        type: SuiteMessageType.UpdateSharedData,
+        key,
+        value
+      };
+
+      handler(message);
+
+      expect(SuiteRunner['sharedSuiteStorage'].get(key)).toBe(value);
+
+      expect(rejectCalled).toBeFalsy();
+      expect(resolveCalled).toBeFalsy();
     });
   });
 
@@ -348,6 +467,116 @@ describe(SuiteRunner, () => {
       const validationResult = SuiteRunner['validateStepPresence'](duplicateStep);
 
       expect(validationResult.startsWith(StepError.methodOnMultipleSteps)).toBeTruthy();
+    });
+  });
+
+  describe('Suite', () => {
+    class SuiteTest extends SampleSuite { }
+
+    afterEach(() => {
+      SuiteRunner['configStorage'].delete(SuiteTest.name);
+    });
+
+    it('should ignore disabled suites', () => {
+      Suite({
+        disabled: true,
+        dependsOn: []
+      })(SuiteTest);
+
+      expect(SuiteRunner['configStorage'].get(SuiteTest.name)).toBe(undefined);
+    });
+
+
+    it('should throw on already registered suites', () => {
+      Suite({
+        dependsOn: []
+      })(SuiteTest);
+
+      expect(() => Suite({ dependsOn: [] })(SuiteTest)).toThrow();
+    });
+
+    it('should recognize root suites', () => {
+      Suite({
+        dependsOn: []
+      })(SuiteTest);
+
+      expect(SuiteRunner['rootSuites']).toContain(SuiteTest);
+    });
+  });
+
+  describe('Step', () => {
+    class StepTest extends SampleSuite { method1 () { } }
+
+    it('should register a step', () => {
+      Step(1)(StepTest.prototype, 'method1');
+
+      const store = SuiteRunner['getConfigStore'](StepTest);
+
+      expect(store.steps[1]).toBe('method1');
+    });
+
+
+    it('should register a step', () => {
+      Step(2)(StepTest.prototype, 'method1');
+      expect(() => Step(2)(StepTest.prototype, 'method1')).toThrow();
+    });
+  });
+
+  describe('setConfig', () => {
+    it('should be able to set the config', () => {
+      class ConfigTest extends SampleSuite { }
+      const config = generateConfig();
+
+      SuiteRunner['setConfig'](config.config, ConfigTest);
+
+      expect(SuiteRunner['getConfigStore'](ConfigTest).config).toBe(config.config);
+    });
+  });
+
+  describe('detectInfiniteLoops', () => {
+    it('should be able to detect infinite loops', () => {
+      class LoopTestSpec1 extends SampleSuite { }
+      class LoopTestSpec2 extends SampleSuite { }
+      class LoopTestSpec3 extends SampleSuite { }
+
+      const config1 = generateConfig();
+      const config2 = generateConfig();
+      const config3 = generateConfig();
+
+      config1.config.dependsOn = [LoopTestSpec2];
+      config2.config.dependsOn = [LoopTestSpec3];
+      config3.config.dependsOn = [LoopTestSpec1];
+
+      SuiteRunner['setConfigStore'](LoopTestSpec1, config1);
+      SuiteRunner['setConfigStore'](LoopTestSpec2, config2);
+      SuiteRunner['setConfigStore'](LoopTestSpec3, config3);
+
+      const infiniteLoops = SuiteRunner['detectInfiniteLoops'](LoopTestSpec1);
+
+      expect(infiniteLoops).toEqual([[LoopTestSpec1, LoopTestSpec2, LoopTestSpec3, LoopTestSpec1]]);
+    });
+
+
+    it('should be able to determine non-loops', () => {
+      class NonLoopTestSpec1 extends SampleSuite { }
+      class NonLoopTestSpec2 extends SampleSuite { }
+      class NonLoopTestSpec3 extends SampleSuite { }
+
+      const config1 = generateConfig();
+      const config2 = generateConfig();
+      const config3 = generateConfig();
+
+      config1.config.dependsOn = [NonLoopTestSpec2];
+      config2.config.dependsOn = [NonLoopTestSpec3];
+      config3.config.dependsOn = [];
+
+      SuiteRunner['setConfigStore'](NonLoopTestSpec1, config1);
+      SuiteRunner['setConfigStore'](NonLoopTestSpec2, config2);
+      SuiteRunner['setConfigStore'](NonLoopTestSpec3, config3);
+
+      const infiniteLoops = SuiteRunner['detectInfiniteLoops'](NonLoopTestSpec1);
+
+      expect(infiniteLoops).toEqual([]);
     });
   });
 });
