@@ -1,41 +1,42 @@
-import { BaseSuite } from './base-suite';
-import { Step, Suite } from './decorators';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { mkdtempSync } from 'fs';
+import { tmpdir } from 'os';
+import { resolve } from 'path';
+import { CachedMap } from './cached-map';
 import { SuiteRunner } from './suite-runner';
-import { Browsers, FailResult, StepError, SuiteMessageType, SuiteResultMessage, SuiteStorage, SuiteUpdateSharedDataMessage, TestResult } from './typings';
+import { SuiteRunnerWorker } from './suite-runner-worker';
+import { generateConfig, generateResult, SampleSuite } from './test-helpers';
+import { Browsers, FailResult, RunOptions, SuiteMessageType, SuiteResultMessage, SuiteStorage, SuiteUpdateSharedDataMessage } from './typings';
 
-const suite = 'suite';
-
-const generateResult = (): TestResult<string> => ({
-  result: '',
-  specs: [],
-  success: true,
-  suiteName: suite,
-  time: 0
-});
-
-const generateConfig = (): SuiteStorage<any, any> => ({
-  config: {
-    dependsOn: []
-  },
-  steps: [],
-  suite: SampleSuite
-});
-
-class SampleSuite extends BaseSuite<void> {
-  hostname = '';
-  main () { /* empty */ }
-}
 
 describe(SuiteRunner, () => {
+  let suiteRunner = new SuiteRunner();
+  beforeEach(() => {
+    suiteRunner = new SuiteRunner();
+    suiteRunner['logger'] = {
+      log: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn()
+    } as any;
+    suiteRunner['isMainThread'] = true;
+  });
+  afterEach(() => {
+    jest.resetAllMocks();
+    suiteRunner['configStorage'].clear();
+    suiteRunner['dependencyStorage'].clear();
+    suiteRunner['rootSuites'] = [];
+    suiteRunner['suiteResultStorage'].clear();
+    suiteRunner['sharedSuiteStorage'].clear();
+  });
   describe('result storage', () => {
 
     const suiteName = 'suite';
     const browser = Browsers.chromium;
     it('should be able to get and set results', () => {
       const result = generateResult();
-      SuiteRunner.setSuiteResult(browser, suiteName, result);
+      suiteRunner.setSuiteResult(browser, suiteName, result);
       
-      const found = SuiteRunner.getSuiteResult(browser, suiteName);
+      const found = suiteRunner.getSuiteResult(browser, suiteName);
       
       expect(found).toBe(result);
     });
@@ -43,9 +44,9 @@ describe(SuiteRunner, () => {
     it('should not have results from different browsers', () => {
       const result = generateResult();
 
-      SuiteRunner.setSuiteResult(browser, suiteName, result);
+      suiteRunner.setSuiteResult(browser, suiteName, result);
 
-      const found = SuiteRunner.getSuiteResult(Browsers.firefox, suiteName);
+      const found = suiteRunner.getSuiteResult(Browsers.firefox, suiteName);
 
       expect(found).toBeUndefined();
     });
@@ -53,41 +54,33 @@ describe(SuiteRunner, () => {
 
   describe('config storage', () => {
     const config: SuiteStorage<any, any> = generateConfig();
-    const runner = new SuiteRunner();
     it('should be able to find existing configs', () => {
-      SuiteRunner['configStorage'].set(suite, config);
+      suiteRunner['configStorage'].set(SampleSuite.name, config);
 
-      expect(runner['getSuiteConfig'](suite)).toBe(config);
+      expect(suiteRunner['getSuiteConfig'](SampleSuite.name)).toBe(config);
     });
 
 
     it('should throw an error when the config is not present', () => {
-      SuiteRunner['configStorage'].delete(suite);
+      suiteRunner['configStorage'].delete(SampleSuite.name);
 
-      expect(() => runner['getSuiteConfig'](suite)).toThrowError();
+      expect(() => suiteRunner['getSuiteConfig'](SampleSuite.name)).toThrowError();
     });
   });
 
   describe('runSuiteInMain', () => {
     it('should set the suite result on success', async () => {
-      const runner = new SuiteRunner();
       const result = generateResult();
       
-      runner['awaitWorker'] = async () => result;
+      suiteRunner['awaitWorker'] = async () => result;
 
-      await runner['runSuiteInMain'](suite, Browsers.chromium);
+      await suiteRunner['runSuiteInMain'](SampleSuite.name, Browsers.chromium);
 
-      expect(SuiteRunner.getSuiteResult(Browsers.chromium, suite)).toBe(result);
+      expect(suiteRunner.getSuiteResult(Browsers.chromium, SampleSuite.name)).toBe(result);
     });
   });
 
   describe('determineReadySuites', () => {
-    let runner: SuiteRunner;
-
-    beforeEach(() => {
-      runner = new SuiteRunner();
-    });
-
 
     it('should run suites that have all dependencies succeeded', () => {
       class suite1 extends SampleSuite { }
@@ -114,17 +107,17 @@ describe(SuiteRunner, () => {
       ];
 
       // 1 triggers 3
-      SuiteRunner['dependencyStorage'].set(suite1.name, triggeredSuites);
+      suiteRunner['dependencyStorage'].set(suite1.name, triggeredSuites);
       // 2 triggers 3
-      SuiteRunner['dependencyStorage'].set(suite2.name, triggeredSuites);
+      suiteRunner['dependencyStorage'].set(suite2.name, triggeredSuites);
 
-      SuiteRunner['setConfigStore'](suite3, suite3Config);
+      suiteRunner.storage['setConfigStore'](suite3, suite3Config);
 
-      SuiteRunner.setSuiteResult(Browsers.chromium, suite1.name, suite1Result);
+      suiteRunner.setSuiteResult(Browsers.chromium, suite1.name, suite1Result);
 
-      SuiteRunner.setSuiteResult(Browsers.chromium, suite2.name, suite2Result);
+      suiteRunner.setSuiteResult(Browsers.chromium, suite2.name, suite2Result);
 
-      const readySuites = runner['determineReadySuites'](suite2.name, Browsers.chromium);
+      const readySuites = suiteRunner['determineReadySuites'](suite2.name, Browsers.chromium);
       expect(readySuites).toEqual(['suite3']);
     });
 
@@ -153,17 +146,17 @@ describe(SuiteRunner, () => {
       ];
 
       // 1 triggers 3
-      SuiteRunner['dependencyStorage'].set(suite1, triggeredSuites);
+      suiteRunner['dependencyStorage'].set(suite1, triggeredSuites);
       // 2 triggers 3
-      SuiteRunner['dependencyStorage'].set(suite2, triggeredSuites);
+      suiteRunner['dependencyStorage'].set(suite2, triggeredSuites);
 
-      SuiteRunner['setConfigStore'](suite3, suite3Config);
+      suiteRunner.storage['setConfigStore'](suite3, suite3Config);
 
-      SuiteRunner.setSuiteResult(Browsers.chromium, suite1, suite1Result);
+      suiteRunner.setSuiteResult(Browsers.chromium, suite1, suite1Result);
 
-      SuiteRunner.setSuiteResult(Browsers.chromium, suite2, suite2Result);
+      suiteRunner.setSuiteResult(Browsers.chromium, suite2, suite2Result);
 
-      const readySuites = runner['determineReadySuites'](suite2, Browsers.chromium);
+      const readySuites = suiteRunner['determineReadySuites'](suite2, Browsers.chromium);
       expect(readySuites).toEqual([]);
     });
 
@@ -186,20 +179,18 @@ describe(SuiteRunner, () => {
       ];
 
       // 1 triggers 3
-      SuiteRunner['dependencyStorage'].set(suite1, triggeredSuites);
+      suiteRunner['dependencyStorage'].set(suite1, triggeredSuites);
       // 2 triggers 3
-      SuiteRunner['dependencyStorage'].set(suite2, triggeredSuites);
+      suiteRunner['dependencyStorage'].set(suite2, triggeredSuites);
 
-      SuiteRunner['setConfigStore'](suite3, suite3Config);
+      suiteRunner.storage['setConfigStore'](suite3, suite3Config);
 
-      const readySuites = runner['determineReadySuites'](suite2, Browsers.chromium);
+      const readySuites = suiteRunner['determineReadySuites'](suite2, Browsers.chromium);
       expect(readySuites).toEqual([]);
     });
   });
 
   describe('suite concurrency', () => {
-    const runner = new SuiteRunner();
-
     class suite1Isolate extends SampleSuite { }
     class suite2Isolate extends SampleSuite { }
     class suite3Concurrent extends SampleSuite { }
@@ -214,16 +205,17 @@ describe(SuiteRunner, () => {
     suite2IsolateConfig.config.runInIsolation = true;
     suite3Config.config.runInIsolation = false;
     suite4Config.config.runInIsolation = false;
-
-    SuiteRunner['setConfigStore'](suite1Isolate, suite1IsolateConfig);
-    SuiteRunner['setConfigStore'](suite2Isolate, suite2IsolateConfig);
-    SuiteRunner['setConfigStore'](suite3Concurrent, suite3Config);
-    SuiteRunner['setConfigStore'](suite4Concurrent, suite4Config);
+    beforeEach(() => {
+      suiteRunner.storage.setConfigStore(suite1Isolate, suite1IsolateConfig);
+      suiteRunner.storage.setConfigStore(suite2Isolate, suite2IsolateConfig);
+      suiteRunner.storage.setConfigStore(suite3Concurrent, suite3Config);
+      suiteRunner.storage.setConfigStore(suite4Concurrent, suite4Config);
+    });
 
     it('should correctly put the suites in order (experimental)', () => {
       process.env.SD_EXPERIMENTAL_CONCURRENCY = 'enabled';
 
-      const result = runner['determineIsolatedSuites']([
+      const result = suiteRunner['determineIsolatedSuites']([
         suite1Isolate.name,
         suite2Isolate.name,
         suite3Concurrent.name,
@@ -247,7 +239,7 @@ describe(SuiteRunner, () => {
     it('should correctly put the suites in order', () => {
       process.env.SD_EXPERIMENTAL_CONCURRENCY = '';
 
-      const result = runner['determineIsolatedSuites']([
+      const result = suiteRunner['determineIsolatedSuites']([
         suite1Isolate.name,
         suite2Isolate.name,
         suite3Concurrent.name,
@@ -267,8 +259,6 @@ describe(SuiteRunner, () => {
     });
 
     it('should run isolate suites in order', async () => {
-      const suiteRunner = new SuiteRunner();
-
       // the second promise should not start until the first one is finished
       const consecutive1 = () => new Promise<void>((r) => setTimeout(() => r(), 9));
       const consecutive2 = () => new Promise<void>((r) => setTimeout(() => r(), 7));
@@ -282,22 +272,22 @@ describe(SuiteRunner, () => {
       suiteRunner['runSuiteInMain'] = async (suiteName: string) => {
         switch (suiteName) {
           case suite1Isolate.name:
-            expect(results).toEqual([])
+            expect(results).toEqual([]);
             await consecutive1();
             break;
-            case suite2Isolate.name:
-            expect(results).toEqual([suite1Isolate.name])
+          case suite2Isolate.name:
+            expect(results).toEqual([suite1Isolate.name]);
             await consecutive2();
             break;
-            case suite3Concurrent.name:
-            expect(results).toEqual([suite1Isolate.name, suite2Isolate.name])
+          case suite3Concurrent.name:
+            expect(results).toEqual([suite1Isolate.name, suite2Isolate.name]);
             await concurrent1();
             break;
           case suite4Concurrent.name:
             await concurrent2();
             break;
           default:
-            throw new Error();  
+            throw new Error();
           }
           results.push(suiteName);
       };
@@ -313,17 +303,16 @@ describe(SuiteRunner, () => {
   });
 
   describe('handleWorkerMessage', () => {
-    const runner = new SuiteRunner();
     it('should handle a successful worker result message', () => {
       let resolveArg: any;
-      const resolve = (arg: any) => {
+      const res = (arg: any) => {
         resolveArg = arg;
       };
       let rejectCalled = false;
       const reject = () => {
         rejectCalled = true;
       };
-      const handler = runner['handleWorkerMessage']('worker', resolve, reject, Browsers.chromium, 'suiteName');
+      const handler = suiteRunner['handleWorkerMessage']('worker', res, reject, Browsers.chromium, 'suiteName');
 
       const result = generateResult();
       result.success = true;
@@ -344,14 +333,14 @@ describe(SuiteRunner, () => {
         rejectArg = arg;
       };
       let resolveCalled = false;
-      const resolve = () => {
+      const res = () => {
         resolveCalled = true;
       };
-      const handler = runner['handleWorkerMessage']('worker', resolve, reject, Browsers.chromium, 'suiteName');
+      const handler = suiteRunner['handleWorkerMessage']('worker', res, reject, Browsers.chromium, 'suiteName');
 
       const result = generateResult();
       result.success = false;
-      const error = 'error'
+      const error = 'error';
       const spec: FailResult = {
         specName: '',
         success: false,
@@ -376,10 +365,10 @@ describe(SuiteRunner, () => {
         rejectArg = arg;
       };
       let resolveCalled = false;
-      const resolve = () => {
+      const res = () => {
         resolveCalled = true;
       };
-      const handler = runner['handleWorkerMessage']('worker', resolve, reject, Browsers.chromium, 'suiteName');
+      const handler = suiteRunner['handleWorkerMessage']('worker', res, reject, Browsers.chromium, 'suiteName');
 
       const result = generateResult();
       result.success = false;
@@ -398,14 +387,14 @@ describe(SuiteRunner, () => {
 
     it('should handle an update value message', () => {
       let resolveCalled = false;
-      const resolve = (arg: any) => {
+      const res = () => {
         resolveCalled = true;
       };
       let rejectCalled = false;
       const reject = () => {
         rejectCalled = true;
       };
-      const handler = runner['handleWorkerMessage']('worker', resolve, reject, Browsers.chromium, 'suiteName');
+      const handler = suiteRunner['handleWorkerMessage']('worker', res, reject, Browsers.chromium, 'suiteName');
 
       const key = 'key';
       const value = 'value';
@@ -418,165 +407,209 @@ describe(SuiteRunner, () => {
 
       handler(message);
 
-      expect(SuiteRunner['sharedSuiteStorage'].get(key)).toBe(value);
+      expect(suiteRunner['sharedSuiteStorage'].get(key)).toBe(value);
 
       expect(rejectCalled).toBeFalsy();
       expect(resolveCalled).toBeFalsy();
     });
   });
 
-  describe('steps', () => {
+  describe('importSuites', () => {
+    it('should be able to load in the correct suites', () => {
+      const _globSearch = suiteRunner['globSearch'];
+      const _root = suiteRunner['rootPath'];
+      const _require = suiteRunner['require'];
 
-    const validSteps = {
-      1: 'test',
-      2: 'test2'
-    };
+      const requireCalls: string[] = [];
 
-    const missingStep = {
-      1: 'test',
-      3: 'test2'
-    };
+      suiteRunner['require'] = (path: string) => requireCalls.push(path);
+      suiteRunner['rootPath'] = '/root/';
+      suiteRunner['globSearch'] = () => ['/path/to/file.js'];
 
-    const noSteps = {};
+      suiteRunner['importSuites']('');
 
-    const duplicateStep = {
-      1: 'test',
-      2: 'test'
-    };
+      expect(requireCalls).toEqual(['/path/to/file']);
 
-    it('should be able to validate valid steps', () => {
-      const validationResult = SuiteRunner['validateStepPresence'](validSteps);
-
-      expect(validationResult).toEqual('');
-    });
-
-    it('should be able to invalidate empty steps', () => {
-      const validationResult = SuiteRunner['validateStepPresence'](noSteps);
-
-      expect(validationResult).toEqual(StepError.noSteps);
-    });
-
-    it('should be able to invalidate missing steps', () => {
-      const validationResult = SuiteRunner['validateStepPresence'](missingStep);
-
-      expect(validationResult.startsWith(StepError.missingStep)).toBeTruthy();
-    });
-
-
-    it('should be able to invalidate methods with multiple step numbers', () => {
-      const validationResult = SuiteRunner['validateStepPresence'](duplicateStep);
-
-      expect(validationResult.startsWith(StepError.methodOnMultipleSteps)).toBeTruthy();
+      suiteRunner['rootPath'] = _root;
+      suiteRunner['globSearch'] = _globSearch;
+      suiteRunner['require'] = _require;
     });
   });
 
-  describe('Suite', () => {
-    class SuiteTest extends SampleSuite { }
+  describe('generateConfigWithDefaults', () => {
+    it('should provide defaults', () => {
+      const originalRunOptions: RunOptions = {
+        browsers: []
+      };
 
-    afterEach(() => {
-      SuiteRunner['configStorage'].delete(SuiteTest.name);
-    });
+      const defaulted = suiteRunner['generateConfigWithDefaults'](originalRunOptions);
 
-    it('should ignore disabled suites', () => {
-      Suite({
-        disabled: true,
-        dependsOn: []
-      })(SuiteTest);
-
-      expect(SuiteRunner['configStorage'].get(SuiteTest.name)).toBe(undefined);
-    });
-
-
-    it('should throw on already registered suites', () => {
-      Suite({
-        dependsOn: []
-      })(SuiteTest);
-
-      expect(() => Suite({ dependsOn: [] })(SuiteTest)).toThrow();
-    });
-
-    it('should recognize root suites', () => {
-      Suite({
-        dependsOn: []
-      })(SuiteTest);
-
-      expect(SuiteRunner['rootSuites']).toContain(SuiteTest);
+      expect(defaulted).toHaveProperty('autoResume');
+      expect(defaulted).toHaveProperty('importFilePattern');
+      expect(defaulted).toHaveProperty('runBrowsersInParallel');
     });
   });
 
-  describe('Step', () => {
-    class StepTest extends SampleSuite { method1 () { } }
+  describe('run', () => {
+    it('should correctly patch result storage', async () => {
+      suiteRunner.run({
+        browsers: []
+      });
 
-    it('should register a step', () => {
-      Step(1)(StepTest.prototype, 'method1');
+      expect(suiteRunner['suiteResultStorage'] instanceof CachedMap).toBeFalsy();
 
-      const store = SuiteRunner['getConfigStore'](StepTest);
+      await suiteRunner.run({
+        browsers: [],
+        autoResume: {
+          enabled: true,
+          location: resolve(mkdtempSync(resolve(tmpdir(), 'e2e-runner')), 'cache')
+        }
+      });
 
-      expect(store.steps[1]).toBe('method1');
+      expect(suiteRunner['suiteResultStorage'] instanceof CachedMap).toBeTruthy();
+    });
+
+    it('should run in main when relevant', async () => {
+      spyOn(suiteRunner as any, 'runMain');
+      spyOn(suiteRunner as any, 'runWorker');
+
+      suiteRunner['isMainThread'] = true;
+
+      await suiteRunner['run']({
+        browsers: []
+      });
+
+      expect(suiteRunner['runMain']).toHaveBeenCalled();
+      expect(suiteRunner['runWorker']).not.toHaveBeenCalled();
     });
 
 
-    it('should register a step', () => {
-      Step(2)(StepTest.prototype, 'method1');
-      expect(() => Step(2)(StepTest.prototype, 'method1')).toThrow();
+    it('should run in worker when relevant', async () => {
+      spyOn(suiteRunner as any, 'runMain');
+      spyOn(suiteRunner as any, 'runWorker');
+
+      suiteRunner['isMainThread'] = false;
+      suiteRunner['dataForSuiteWorker'] = {
+        suiteName: ''
+      } as any;
+
+      await suiteRunner['run']({
+        browsers: []
+      });
+
+      expect(suiteRunner['runMain']).not.toHaveBeenCalled();
+      expect(suiteRunner['runWorker']).toHaveBeenCalled();
+    });
+
+    it('should not auto-import if path is not provided', async () => {
+      spyOn(suiteRunner as any, 'importSuites');
+
+      await suiteRunner['run']({
+        browsers: []
+      });
+
+      expect(suiteRunner['importSuites']).not.toHaveBeenCalled();
+    });
+
+
+    it('should auto-import if path is provided', async () => {
+      spyOn(suiteRunner as any, 'importSuites');
+
+      await suiteRunner['run']({
+        browsers: [],
+        importFilePattern: '**'
+      });
+
+      expect(suiteRunner['importSuites']).toHaveBeenCalled();
     });
   });
 
-  describe('setConfig', () => {
-    it('should be able to set the config', () => {
-      class ConfigTest extends SampleSuite { }
-      const config = generateConfig();
+  describe('runBrowsersInMain', () => {
+    it('should run concurrently when relevant', async () => {
+      const browsers = [
+        Browsers.chromium,
+        Browsers.webkit
+      ];
 
-      SuiteRunner['setConfig'](config.config, ConfigTest);
+      const results: Browsers[] = [];
 
-      expect(SuiteRunner['getConfigStore'](ConfigTest).config).toBe(config.config);
+      spyOn(suiteRunner as any, 'runBrowserInMain').and.callFake(async (browser: Browsers) => {
+        if (browser === Browsers.chromium) {
+          await new Promise<boolean>((r) => setTimeout(() => r(true), 10));
+        } else {
+          await new Promise<boolean>((r) => r(true));
+        }
+
+        results.push(browser);
+      });
+
+      await suiteRunner['runBrowsersInMain'](
+        true,
+        browsers
+      );
+
+      expect(results).toEqual([
+        Browsers.webkit,
+        Browsers.chromium
+      ]);
+    });
+
+    it('should run concurrently when relevant', async () => {
+      const browsers = [
+        Browsers.chromium,
+        Browsers.webkit
+      ];
+
+      const results: Browsers[] = [];
+
+      spyOn(suiteRunner as any, 'runBrowserInMain').and.callFake(async (browser: Browsers) => {
+        if (browser === Browsers.chromium) {
+          await new Promise<boolean>((r) => setTimeout(() => r(true), 10));
+        } else {
+          await new Promise<boolean>((r) => r(true));
+        }
+
+        results.push(browser);
+      });
+
+      await suiteRunner['runBrowsersInMain'](
+        false,
+        browsers
+      );
+
+      expect(results).toEqual([
+        Browsers.chromium,
+        Browsers.webkit
+      ]);
     });
   });
 
-  describe('detectInfiniteLoops', () => {
-    it('should be able to detect infinite loops', () => {
-      class LoopTestSpec1 extends SampleSuite { }
-      class LoopTestSpec2 extends SampleSuite { }
-      class LoopTestSpec3 extends SampleSuite { }
+  describe('runWorker', () => {
+    it('should call `runSuiteInWorker`', async () => {
+      const spy = spyOn(SuiteRunnerWorker.prototype as any, 'runSuiteInWorker').and.returnValue({});
 
-      const config1 = generateConfig();
-      const config2 = generateConfig();
-      const config3 = generateConfig();
+      suiteRunner.storage.setConfig({ dependsOn: [] }, SampleSuite);
 
-      config1.config.dependsOn = [LoopTestSpec2];
-      config2.config.dependsOn = [LoopTestSpec3];
-      config3.config.dependsOn = [LoopTestSpec1];
+      await suiteRunner['runWorker'](
+        SampleSuite.name,
+        suiteRunner['generateConfigWithDefaults']({ browsers: [] })
+      );
 
-      SuiteRunner['setConfigStore'](LoopTestSpec1, config1);
-      SuiteRunner['setConfigStore'](LoopTestSpec2, config2);
-      SuiteRunner['setConfigStore'](LoopTestSpec3, config3);
+      expect(spy).toHaveBeenCalled();
 
-      const infiniteLoops = SuiteRunner['detectInfiniteLoops'](LoopTestSpec1);
-
-      expect(infiniteLoops).toEqual([[LoopTestSpec1, LoopTestSpec2, LoopTestSpec3, LoopTestSpec1]]);
+      jest.clearAllMocks();
     });
+  });
 
+  describe('awaitWorker', () => {
+    it('should return an existing result if present and successful', async () => {
+      const existingResult = generateResult();
+      existingResult.success = true;
+      suiteRunner.setSuiteResult(Browsers.chromium, SampleSuite.name, existingResult);
 
-    it('should be able to determine non-loops', () => {
-      class NonLoopTestSpec1 extends SampleSuite { }
-      class NonLoopTestSpec2 extends SampleSuite { }
-      class NonLoopTestSpec3 extends SampleSuite { }
+      const result = await suiteRunner['awaitWorker'](SampleSuite.name, Browsers.chromium);
 
-      const config1 = generateConfig();
-      const config2 = generateConfig();
-      const config3 = generateConfig();
-
-      config1.config.dependsOn = [NonLoopTestSpec2];
-      config2.config.dependsOn = [NonLoopTestSpec3];
-      config3.config.dependsOn = [];
-
-      SuiteRunner['setConfigStore'](NonLoopTestSpec1, config1);
-      SuiteRunner['setConfigStore'](NonLoopTestSpec2, config2);
-      SuiteRunner['setConfigStore'](NonLoopTestSpec3, config3);
-
-      const infiniteLoops = SuiteRunner['detectInfiniteLoops'](NonLoopTestSpec1);
-
-      expect(infiniteLoops).toEqual([]);
+      expect(result).toBe(existingResult);
     });
   });
 });

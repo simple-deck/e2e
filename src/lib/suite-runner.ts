@@ -1,39 +1,33 @@
 import { sync } from 'glob';
-import { isMainThread, Worker, workerData } from 'worker_threads';
-import { BaseSuite, CoreSuite } from './base-suite';
+import { isMainThread, Worker } from 'worker_threads';
+import { CoreSuite } from './base-suite';
 import { CachedMap } from './cached-map';
 import { generateSuiteResultKey } from './generate-suite-result-key';
 import { ResultsProcessor } from './results-processor';
+import { SuiteRunnerStorage } from './suite-runner-storage';
 import { SuiteRunnerWorker } from './suite-runner-worker';
-import { Browsers, DataForSuiteWorker, FailResult, FunctionKeys, RunOptions, StepError, SuiteArgs, SuiteConfig, SuiteMessageType, SuiteResultMessage, SuiteStorage, SuiteUpdateSharedDataMessage, TestResult, Type } from './typings';
-const dataForSuiteWorker: DataForSuiteWorker = workerData;
+import { Browsers, DataForSuiteWorker, FailResult, NonNullableObject, RunOptions, SuiteMessageType, SuiteResultMessage, SuiteUpdateSharedDataMessage, TestResult, TestResultsProcessor, Type } from './typings';
 
-/* tracks test suite configs */
-const configStorage = new Map<string, SuiteStorage<CoreSuite, unknown[]>>();
-/* tracks what test suites run based on this one */
-const dependencyStorage = new Map<string, string[]>();
-/* Suites with no depends on */
-const rootSuites: string[] = [];
 
-/* tracks the results of the test suites that have run */
-const suiteResultStorage = new Map<string, TestResult<string>>();
-
-const sharedSuiteStorage = new Map<string, boolean|string|number>();
 
 export class SuiteRunner {
-  private static configStorage = configStorage;
-  private static dependencyStorage = dependencyStorage;
-  private static rootSuites = rootSuites;
-  private static suiteResultStorage = suiteResultStorage;
+  public storage = new SuiteRunnerStorage();
+  private logger = console;
+  private dataForSuiteWorker: DataForSuiteWorker = this.storage.dataForSuiteWorker;
+  private configStorage = this.storage.configStorage;
+  private dependencyStorage = this.storage.dependencyStorage;
+  private rootSuites = this.storage.rootSuites;
+  private suiteResultStorage = this.storage.suiteResultStorage;
+  private sharedSuiteStorage = this.storage.sharedSuiteStorage;
 
-  private static sharedSuiteStorage = sharedSuiteStorage;
+  private rootPath = require.main?.path + '/';
+  private isMainThread = isMainThread;
 
-
-  static setSuiteResult (browserName: Browsers, suiteName: string, result: TestResult<string>): void {
+  setSuiteResult (browserName: Browsers, suiteName: string, result: TestResult<string>): void {
     this.suiteResultStorage.set(generateSuiteResultKey(browserName, suiteName), result);
   }
 
-  static getSuiteResult (browserName: Browsers, suiteName: string): TestResult<string>|undefined {
+  getSuiteResult (browserName: Browsers, suiteName: string): TestResult<string>|undefined {
     return this.suiteResultStorage.get(generateSuiteResultKey(browserName, suiteName));
   }
 
@@ -44,7 +38,7 @@ export class SuiteRunner {
    * @returns The configuration of the suite
    */
   private getSuiteConfig (suite: string) {
-    const config = SuiteRunner.configStorage.get(suite);
+    const config = this.configStorage.get(suite);
 
     if (!config) {
       throw new ReferenceError(`Could not determine configuration for test suite (${suite}), did you decorate your class?`);
@@ -63,10 +57,10 @@ export class SuiteRunner {
     suiteName: string,
     browser: Browsers
   ): Promise<void> {
-    console.log('running ', suiteName, ' in ', browser);
+    this.logger.log('running ', suiteName, ' in ', browser);
     const result = await this.awaitWorker(suiteName, browser);
 
-    SuiteRunner.setSuiteResult(browser, suiteName, result);
+    this.setSuiteResult(browser, suiteName, result);
 
     const readySuites = this.determineReadySuites(suiteName, browser);
 
@@ -76,7 +70,7 @@ export class SuiteRunner {
 
   private determineReadySuites (suiteName: string, browser: Browsers) {
     // look up suites that this could potentially trigger
-    const triggeredSuites = SuiteRunner.dependencyStorage.get(suiteName) ?? [];
+    const triggeredSuites = this.dependencyStorage.get(suiteName) ?? [];
 
     // for each
     const readySuites = triggeredSuites.filter((triggeredSuite) => {
@@ -85,7 +79,7 @@ export class SuiteRunner {
 
       // make sure they have ALL already run and have succeeded
       const shouldRunSuite = dependentSuites.every((suite: Type<CoreSuite>) => {
-        const result = SuiteRunner.getSuiteResult(browser, suite.name);
+        const result = this.getSuiteResult(browser, suite.name);
 
         return result?.success ?? false;
       });
@@ -142,33 +136,42 @@ export class SuiteRunner {
       return this.runSuiteInMain(triggeredSuite, browser);
     }));
   }
-
+  /* istanbul ignore next */
   private createWorker (data: DataForSuiteWorker) {
     return new Worker(require.main?.filename ?? __filename, {
       workerData: data
     });
   }
-
+  /* istanbul ignore next */
+  private require (path: string) {
+    return require(path);
+  }
+  /* istanbul ignore next */
+  private globSearch (...args: Parameters<typeof sync>) {
+    return sync(...args);
+  }
+  
   private async awaitWorker (
     suiteName: string,
     browser: Browsers
   ) {
     const workerName = `worker for ${suiteName} on ${browser}`;
-    const existingResult = SuiteRunner.getSuiteResult(browser, suiteName);
+
+    const existingResult = this.getSuiteResult(browser, suiteName);
     if (existingResult?.success) {
-      console.log(`skipping: ${workerName}`);
+      this.logger.log(`skipping: ${workerName}`);
 
       return existingResult;
     }
 
-    console.log(`spawning:`, workerName);
+    this.logger.log(`spawning:`, workerName);
 
     return new Promise<TestResult<string>>((res, rej) => {
       const worker = this.createWorker({
         suiteName,
         browser,
-        resultStorage: SuiteRunner.suiteResultStorage,
-        sharedStorage: SuiteRunner.sharedSuiteStorage
+        resultStorage: this.suiteResultStorage,
+        sharedStorage: this.sharedSuiteStorage
       });
   
       const workerMessageHandler = this.handleWorkerMessage(
@@ -185,7 +188,7 @@ export class SuiteRunner {
       worker.on('message', workerMessageHandler);
 
       worker.on('error', (err) => {
-        console.log(workerName, 'failed with', err);
+        this.logger.log(workerName, 'failed with', err);
         rej(err);
       });
     });
@@ -203,39 +206,39 @@ export class SuiteRunner {
       if (message.type === SuiteMessageType.FinalResult) {
         const { result } = message;
         if (result.success) {
-          console.log(workerName, `succeeded with`, result);
+          this.logger.log(workerName, `succeeded with`, result);
           res(result);
         } else if (result.success === false) {
           const errorSpec = result.specs.find(spec => spec.success === false) as FailResult;
-          // console.log(workerName, 'failed with', result.error);
+          // this.logger.log(workerName, 'failed with', result.error);
           rej(errorSpec?.error);
         }
-        SuiteRunner.setSuiteResult(browser, suiteName, result);
+        this.setSuiteResult(browser, suiteName, result);
       } else if (message.type === SuiteMessageType.UpdateSharedData) {
-        SuiteRunner.sharedSuiteStorage.set(message.key, message.value);
+        this.sharedSuiteStorage.set(message.key, message.value);
       }
     };
   }
 
-  private async runInMain (browser: Browsers): Promise<boolean> {
+  private async runBrowserInMain (browser: Browsers): Promise<boolean> {
     const start = Date.now();
     
-    const [isolatedSuites, concurrentSuites] = this.determineIsolatedSuites(SuiteRunner.rootSuites);
+    const [isolatedSuites, concurrentSuites] = this.determineIsolatedSuites(this.rootSuites);
     try {
       await this.executeSuitesInOrder(browser, isolatedSuites, concurrentSuites);
     } catch (e) {
-      console.error(`${browser} failed with ${e}`);
+      this.logger.error(`${browser} failed with ${e}`);
 
       return false;
     }
-    console.log('All tests finished in: ', Date.now() - start);
+    this.logger.log('All tests finished in: ', Date.now() - start);
 
     return true;
   }
 
-  static async run (options: RunOptions): Promise<void> {
+  private generateConfigWithDefaults (options: RunOptions) {
     const {
-      importFilePattern,
+      importFilePattern = '',
       browsers = [],
       launchOptions = {
         headless: true
@@ -246,87 +249,121 @@ export class SuiteRunner {
         enabled: false,
         location: ''
       },
+      testResults = {
+        location: '',
+        processor: TestResultsProcessor.JUnit
+      }
     } = options;
 
-    const conf = {
+    return {
       importFilePattern,
       browsers,
       launchOptions,
       runBrowsersInParallel,
-      screenshotBetweenStages
+      screenshotBetweenStages,
+      autoResume,
+      testResults
     };
+  }
 
+  async run (options: RunOptions): Promise<void> {
+    const conf: NonNullableObject<RunOptions> = this.generateConfigWithDefaults(options);
+
+    const {
+      autoResume,
+      importFilePattern,
+      runBrowsersInParallel,
+      browsers
+    } = conf;
     if (autoResume.enabled) {
-      SuiteRunner.suiteResultStorage = new CachedMap(autoResume.location);
+      this.suiteResultStorage = new CachedMap(autoResume.location);
     }
-
-    const suiteRunner = new SuiteRunner();
 
     if (importFilePattern) {
       this.importSuites(importFilePattern);
     }
 
-    if (isMainThread) {
-      let allPassed = true;
-      const start = Date.now();
-      if (runBrowsersInParallel) {
-        await Promise.all(browsers.map(async (browser) => {
-          const thisPassed = await suiteRunner.runInMain(browser);
-          if (!thisPassed) {
-            allPassed = false;
-          }
-        }));
-      } else {
-        for (const browser of browsers) {
-          const thisPassed = await suiteRunner.runInMain(browser);
-
-          if (!thisPassed) {
-            allPassed = false;
-          }
-        }
-      }
-
-      if (allPassed) {
-        SuiteRunner.suiteResultStorage.clear();
-      }
-
-      const allResults = [...SuiteRunner.suiteResultStorage.values()];
-
-      if (options.testResults) {
-        const processor = new ResultsProcessor();
-        await processor.writeResults(
-          options.testResults.processor,
-          allResults,
-          Date.now() - start,
-          options.testResults.location
-        );
-      }
-
-      if (!allPassed) {
-        process.exit(1);
-      }
+    if (this.isMainThread) {
+      await this.runMain(runBrowsersInParallel, browsers, options);
     } else {
-      const suiteRunnerWorker = new SuiteRunnerWorker(
-        suiteRunner.getSuiteConfig(dataForSuiteWorker.suiteName),
-        conf  
-      );
-
-      await suiteRunnerWorker.runSuiteInWorker();
+      await this.runWorker(this.dataForSuiteWorker.suiteName, conf);
     }
   }
 
-  private static importSuites (
+  private async runWorker (
+    suiteName: string,
+    conf: NonNullableObject<RunOptions>
+  ) {
+    const suiteRunnerWorker = new SuiteRunnerWorker(
+      this.getSuiteConfig(suiteName),
+      conf
+    );
+
+    await suiteRunnerWorker.runSuiteInWorker();
+  }
+
+  private async runMain (runBrowsersInParallel: boolean, browsers: Browsers[], options: RunOptions) {
+    const start = Date.now();
+    const allPassed = await this.runBrowsersInMain(runBrowsersInParallel, browsers);
+
+    if (allPassed) {
+      this.suiteResultStorage.clear();
+    }
+
+    const allResults = [...this.suiteResultStorage.values()];
+
+    if (options.testResults) {
+      const processor = new ResultsProcessor();
+      await processor.writeResults(
+        options.testResults.processor,
+        allResults,
+        Date.now() - start,
+        options.testResults.location
+      );
+    }
+
+    if (!allPassed) {
+      process.exit(1);
+    }
+  }
+
+  private async runBrowsersInMain (
+    runBrowsersInParallel: boolean,
+    browsers: Browsers[]
+  ) {
+    let allPassed = true;
+    if (runBrowsersInParallel) {
+      await Promise.all(browsers.map(async (browser) => {
+        const thisPassed = await this.runBrowserInMain(browser);
+        if (!thisPassed) {
+          allPassed = false;
+        }
+      }));
+    } else {
+      for (const browser of browsers) {
+        const thisPassed = await this.runBrowserInMain(browser);
+
+        if (!thisPassed) {
+          allPassed = false;
+        }
+      }
+    }
+
+    return allPassed;
+  }
+
+  private importSuites (
     filePattern: string
   ) {
-    const root = require.main?.path + '/';
+    const root = this.rootPath;
     // glob search from current working directory
-    const matchedFiles = sync(filePattern, {
+    const matchedFiles = this.globSearch(filePattern, {
       cwd: root,
       absolute: true
     });
 
     if (isMainThread) {
-      console.log('matched', matchedFiles, 'for', filePattern, 'relative to', root);
+      this.logger.log('matched', matchedFiles, 'for', filePattern, 'relative to', root);
     }
 
     // remove file extension
@@ -335,176 +372,10 @@ export class SuiteRunner {
     });
 
     // `require` each file
-    importPaths.forEach(path => require(path));
+    importPaths.forEach(path => this.require(path));
   }
 
-  static Suite<T extends (readonly Type<CoreSuite>[])> (config: SuiteConfig<T>) {
-    // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-    return <T2 extends CoreSuite>(target: Type<CoreSuite>&{ new(...args: SuiteArgs<T>): T2; }) => {
-      if (config.disabled) {
-        return;
-      }
-      if (SuiteRunner.configStorage.get(target.name)?.config) {
-        throw new ReferenceError(`${target.name} is already registered, use a different name`);
-      }
-      SuiteRunner.setConfig<T>(config, target);
-  
-      if (config.dependsOn.length === 0) {
-        SuiteRunner.rootSuites.push(target.name);
-      }
-  
-      const loops = this.detectInfiniteLoops(target as Type<CoreSuite>);
-  
-      if (loops.length > 0) {
-        console.error(loops.map(loop => loop.join(' => ')));
-  
-        throw new Error('Infinite loops detected');
-      }
-
-      const configStore = this.getConfigStore(target);
-
-      if (!(target.prototype instanceof BaseSuite)) {
-        const stepError = this.validateStepPresence(configStore.steps);
-  
-        if (stepError) {
-          throw new Error(`Error validating steps for ${target.name}: ${stepError}`);
-        }
-      }
-
-      config.dependsOn.forEach(dependent => {
-        SuiteRunner.dependencyStorage.set(dependent.name, [
-          ...(SuiteRunner.dependencyStorage.get(dependent.name) ?? []),
-          target.name
-        ]);
-      });
-    };
-  }
-
-  /**
-   * Register a step for a {@link CoreSuite}
-   *
-   * @param order Order which the step should run
-   */
-  static Step (order: number) {
-    // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-    return <T2 extends CoreSuite>(target: T2, prop: FunctionKeys<T2>) => {      
-      const config = SuiteRunner.getConfigStore(target.constructor as Type<T2>) as SuiteStorage<T2, unknown[]>;
-
-      if (order in config.steps) {
-        throw new Error(`${order} already present on ${target.constructor.name}`);
-      }
-
-      config.steps[order] = prop;
-
-      SuiteRunner.setConfigStore(target.constructor as Type<CoreSuite>, config as SuiteStorage<CoreSuite, unknown[]>);
-    };
-  }
-
-  private static setConfig<T extends (readonly Type<CoreSuite>[])> (
-    config: SuiteConfig<T>,
-    target: Type<CoreSuite>&(new (...args: SuiteArgs<T>) => CoreSuite)
-  ) {
-    const configStore: SuiteStorage<CoreSuite, unknown[]> = SuiteRunner.getConfigStore<T>(target);
-
-    configStore.config = config;
-
-    SuiteRunner.configStorage.set(target.name, configStore);
-  }
-
-  private static getConfigStore<T extends (readonly Type<CoreSuite>[])> (target: Type<CoreSuite>&(new (...args: SuiteArgs<T>) => CoreSuite)): SuiteStorage<CoreSuite, unknown[]> {
-    return SuiteRunner.configStorage.get(target.name) ?? {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      config: null as any,
-      suite: target,
-      steps: {}
-    };
-  }
-
-  private static setConfigStore (
-    target: Type<CoreSuite>,
-    store: SuiteStorage<CoreSuite, unknown[]>
-  ) {
-    SuiteRunner.configStorage.set(target.name, store);
-  }
-
-  private static detectInfiniteLoops (core: Type<CoreSuite>): Type<CoreSuite>[][] {
-    const infiniteLoops: Type<CoreSuite>[][] = [];
-  
-    const infiniteLoopLoop = (
-      currentProp: Type<CoreSuite>,
-      currentTree: Type<CoreSuite>[]
-    ) => {
-      const dependents = SuiteRunner.configStorage.get(currentProp.name)?.config.dependsOn ?? [];
-  
-      dependents.forEach((dependent: Type<CoreSuite>) => {
-        const scopedCurrentTree = [
-          ...currentTree,
-          dependent
-        ];
-        const dependentDependsOnRoot = dependent === core;
-        const partOfRelatedInfiniteLoop = currentTree.includes(dependent);
-  
-        if (dependentDependsOnRoot || partOfRelatedInfiniteLoop) {
-          infiniteLoops.push(scopedCurrentTree);
-        } else if (!partOfRelatedInfiniteLoop) {
-          infiniteLoopLoop(
-            dependent,
-            scopedCurrentTree
-          );
-        }
-      });
-    };
-  
-    infiniteLoopLoop(core, [core]);
-  
-    return infiniteLoops;
-  }
-
-  /**
-   * @param Suite The suite to be validated
-   * 
-   * @returns A string representing an error
-   */
-  private static validateStepPresence (
-    steps: Record<number, string>
-  ): string {
-    const keys = Object.keys(steps)
-      .map(key => +key)
-      .sort();
-
-    if (keys.length === 0) {
-      return StepError.noSteps;
-    }
-
-    let index = 0;
-
-    // tracks which step a method was used for
-    const methodUsageMap: Record<string, number> = {};
-
-    for (const key of keys) {
-      const currentStepMethod = steps[key];
-
-      const onLastKey = !((index + 1) in keys);
-      const nextKey = keys[index + 1];
-      const desiredNextKey = key + 1;
-
-      if (currentStepMethod in methodUsageMap) {
-        return `${StepError.methodOnMultipleSteps}: ${currentStepMethod} (${key}, ${methodUsageMap[currentStepMethod]})`;
-      }
-
-      if (onLastKey) {
-        continue;
-      }
-
-      if (desiredNextKey !== nextKey) {
-        return `${StepError.missingStep}: ${desiredNextKey}`;
-      }
-
-      methodUsageMap[currentStepMethod] = key;
-      ++index;
-    }
-
-
-    return '';
+  static run (config: RunOptions): Promise<void> {
+    return new SuiteRunner().run(config);
   }
 }
