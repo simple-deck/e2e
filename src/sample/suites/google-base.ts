@@ -12,6 +12,7 @@ export class GoogleBase extends BaseSuite<void> {
   async main (): Promise<void> {
     await this.goto('/');
 
+
     const defaultTitle = await this.page.title();
 
     expect(defaultTitle).to.match(/Google/);
@@ -25,5 +26,7 @@ export class GoogleBase extends BaseSuite<void> {
     const imagesTitle = await this.page.title();
 
     expect(imagesTitle).to.match(/Images/);
+
+    this.setValue('asdf', 'asdfasdfasdfasdf');
   }
 }

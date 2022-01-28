@@ -1,3 +1,4 @@
+/* istanbul ignore file */
 import { LaunchOptions } from 'playwright';
 import { BaseSuite, CoreSuite } from './base-suite';
 
@@ -75,6 +76,11 @@ export enum StepError {
 
 export enum TestResultsProcessor {
   JUnit
+}
+
+export type NonNullableObject<T> = {
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  [P in keyof T]-?: T[P] extends object ? NonNullable<T[P]> : T[P];
 }
 
 export interface RunOptions {
