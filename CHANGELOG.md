@@ -1,3 +1,10 @@
+# [2.2.0](https://github.com/simple-deck/e2e/compare/v2.1.0...v2.2.0) (2022-01-28)
+
+
+### Features
+
+* **suite-runner:** :white_check_mark: add tests for suite runner ([6e4236e](https://github.com/simple-deck/e2e/commit/6e4236e37f9d7812c1fadc859569e76e6a72dd63)), closes [#11](https://github.com/simple-deck/e2e/issues/11)
+
 # [2.1.0](https://github.com/simple-deck/e2e/compare/v2.0.3...v2.1.0) (2022-01-24)
 
 
